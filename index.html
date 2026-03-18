@@ -1506,17 +1506,17 @@
             setIsToggling(true);
             setConfirmModal({ ...confirmModal, isOpen: false });
 
-            google.script.run
-                .withSuccessHandler((newData) => {
+            // ✅ เปลี่ยนจาก google.script.run มาใช้ apiCall
+            apiCall('toggleMaintenance', confirmModal.targetStatus)
+                .then((newData) => {
                     if (setData) setData(newData);
                     setIsToggling(false);
                     setSuccessModal(true);
                 })
-                .withFailureHandler((err) => {
+                .catch((err) => {
                     setIsToggling(false);
                     alert("เกิดข้อผิดพลาด: " + err.message);
-                })
-                .toggleMaintenance(confirmModal.targetStatus);
+                });
         };
 
         return (
