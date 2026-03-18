@@ -3904,6 +3904,7 @@
     
 
    // --- MAIN APP (Fixed: Notification Loading & Success) ---
+    // --- MAIN APP (Fixed for GitHub Pages / API Mode) ---
     const App = () => {
       const [activeTab, setActiveTab] = useState('dashboard');
       const [loading, setLoading] = useState(true);
@@ -3951,7 +3952,6 @@
 
       useEffect(() => { if (!selectedBill) setIsEditing(false); else setNotifyEnabled(true); }, [selectedBill]);
 
-      // --- Helper: Show Success & Clear Loading ---
       const finishAction = () => {
           setProcessingAction(null);
           setShowSuccess(true);
@@ -3963,7 +3963,6 @@
         isFetchingRef.current = true; 
         if (showSpinner) setLoading(true); 
 
-        // ใช้ apiCall แทน
         apiCall('getAllData')
             .then(response => {
                 if (!processingAction && !isEditing) { setData(response); } 
@@ -3974,8 +3973,8 @@
                 if (showSpinner) { alert('Error: ' + err.message); setLoading(false); } 
                 isFetchingRef.current = false;
             });
-    };
-
+      };
+      
       const fetchOrderData = () => { 
           apiCall('getOrderData').then(res => { if (!processingAction) setOrderData(res); }).catch(err => console.error(err)); 
       };
@@ -4010,12 +4009,6 @@
                   alert("บันทึกไม่สำเร็จ"); 
               }); 
           }, 500);
-      };
-
-      const handleToggleClick = () => {
-          const currentStatus = data.systemStatus || 'OFF';
-          const nextStatus = currentStatus === 'ON' ? 'OFF' : 'ON';
-          setConfirmModal({ isOpen: true, status: nextStatus });
       };
 
       const confirmToggleSystem = () => {
@@ -4134,7 +4127,7 @@
       const handleSaveStudent = (formData) => { 
           setProcessingAction('SAVE_STUDENT'); 
           const onSuccess = (newData) => { setData(newData); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); };
-          const onError = (err) => { setErrorMessage(err.message || err.toString().replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); };
+          const onError = (err) => { setErrorMessage(err.message || String(err).replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); };
           
           if (selectedStudent) { 
               apiCall('editStudent', formData).then(onSuccess).catch(onError); 
@@ -4219,36 +4212,31 @@
       return (
         <div className="min-h-screen bg-background text-gray-800 font-sans">
           
-          {/* ✅ แสดง Success Screen เมื่อเสร็จ */}
           {showSuccess && <SuccessScreen />}
-
-          {/* ✅ แก้ตรงนี้: แสดง LoadingOverlay ทุกครั้งที่มี processingAction (ไม่มียกเว้นแล้ว) */}
           {processingAction && <LoadingOverlay />}
 
           <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center"><div className="flex items-center gap-2"><div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div><h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1></div><button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100"><Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" /></button></header>
           <main className="p-4 max-w-3xl mx-auto">
-            {loading && !data.students.length ? <Spinner /> : (
+            {loading && !data.students?.length ? <Spinner /> : (
               <>
-                {activeTab === 'dashboard' && <DashboardView data={data} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} />}
+                {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction}/>}
                 {activeTab === 'pending' && <PendingView data={data} setSelectedBill={setSelectedBill} />}
                 {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                 {activeTab === 'history' && <HistoryView data={data} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                 {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
-                {/* ✅ เพิ่มแท็บการเงินตรงนี้ */}
                 {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
                 {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
                 {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
               </>
             )}
           </main>
-          {/* --- NEW DESIGN: Floating Glass Dock Navigation --- */}
           <nav className="fixed bottom-5 left-4 right-4 max-w-lg mx-auto bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl shadow-blue-900/10 px-2 py-3 flex justify-between items-center z-40 animate-slide-up-fade">
             {[ 
               { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
-              { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: data.bills.filter(b => b.status === 'รอตรวจสอบ').length }, 
+              { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: data.bills?.filter(b => b.status === 'รอตรวจสอบ').length || 0 }, 
               { id: 'bills', icon: 'receipt', label: 'บิล' }, 
               { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อ' },
-              { id: 'finance', icon: 'wallet', label: 'การเงิน' }, // ✅ เพิ่มแท็บการเงิน 
+              { id: 'finance', icon: 'wallet', label: 'การเงิน' }, 
               { id: 'history', icon: 'clipboard-text', label: 'ประวัติ' }, 
               { id: 'students', icon: 'users', label: 'ผู้ใช้' }, 
               { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' } 
@@ -4264,20 +4252,13 @@
                   }} 
                   className={`relative group flex flex-col items-center justify-center transition-all duration-300 ${isActive ? '-translate-y-3' : 'hover:-translate-y-1'}`}
                 >
-                  {/* Icon Container */}
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
                     <Icon name={tab.icon} size={20} weight={isActive ? 'fill' : 'bold'} />
                   </div>
-
-                  {/* Label (Show only when active or hover) */}
                   <span className={`absolute -bottom-5 text-[9px] font-bold whitespace-nowrap transition-all duration-300 ${isActive ? 'text-blue-600 opacity-100 translate-y-0' : 'text-gray-400 opacity-0 -translate-y-2 pointer-events-none'}`}>
                     {tab.label}
                   </span>
-
-                  {/* Active Dot Indicator */}
                   {isActive && <div className="absolute -bottom-2 w-1 h-1 bg-blue-600 rounded-full"></div>}
-
-                  {/* Notification Badge */}
                   {tab.badge > 0 && (
                     <span className="absolute -top-1 -right-1 flex h-4 w-4">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -4290,14 +4271,12 @@
               );
             })}
           </nav>
-          {/* --- Modal รายละเอียดบิล (Admin Side: Updated with Time) --- */}
+
           <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={isEditing ? "แก้ไขข้อมูลบิล" : "รายละเอียดบิล"} hideClose={!!processingAction} zIndex="z-[60]">
             {selectedBill && (() => {
-              // 1. ฟังก์ชันแปลงวันที่ + เวลา (รองรับ Format จาก Google Sheets)
               const formatDateTime = (dateInput) => {
                   if (!dateInput) return '-';
                   let dateObj;
-                  // กรณีข้อมูลมาเป็น "8/1/2026, 9:29:16" (จาก Sheet)
                   if (typeof dateInput === 'string' && dateInput.includes('/')) {
                       try {
                           const [dPart, tPart] = dateInput.split(', ');
@@ -4309,12 +4288,7 @@
                       dateObj = new Date(dateInput);
                   }
                   if (isNaN(dateObj.getTime())) return dateInput;
-                  
-                  // แสดงผล: 8 ม.ค. 69, 09:29
-                  return dateObj.toLocaleDateString('th-TH', { 
-                      day: 'numeric', month: 'short', year: '2-digit', 
-                      hour: '2-digit', minute: '2-digit', hour12: false 
-                  });
+                  return dateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
               };
 
               const fine = calculateFine(selectedBill);
@@ -4322,7 +4296,6 @@
               const amount = Number(selectedBill.amount) || 0;
               const total = amount + fine - discount;
 
-              // ✅ สร้างตัวแปรเช็คว่า "เกินกำหนดหรือยัง"
               const today = new Date();
               today.setHours(0,0,0,0);
               const due = selectedBill.dueDate ? new Date(selectedBill.dueDate) : null;
@@ -4331,19 +4304,14 @@
 
               return (
                 <div className="space-y-4 relative">
-                  
-                  {/* ปุ่มเครื่องมือ (แสดงเฉพาะตอนไม่ได้แก้ไข) */}
                   {!isEditing && (
                     <div className="flex justify-end gap-2 mb-[-10px] relative z-20">
-                      
-                      {/* ✅ แก้ไขปุ่ม "ทวง" ให้เรียก Modal สวยๆ แทน window.confirm */}
                       {isOverdue && (
                         <button onClick={() => setIsOverdueConfirmOpen(true)} disabled={!!processingAction} className="h-9 px-3 flex items-center justify-center gap-1 rounded-lg bg-red-50 text-red-600 border border-red-100 shadow-sm hover:bg-red-100 hover:text-red-700 transition text-xs font-bold" title="ทวงผ่าน LINE">
                             {processingAction === 'NOTIFY' ? <Icon name="spinner" className="animate-spin" weight="bold" size={16}/> : <Icon name="bell-ringing" weight="bold" size={16}/>}
                             <span className="hidden sm:inline">ทวงถาม</span>
                         </button>
                       )}
-
                       <button onClick={() => setIsEditing(true)} disabled={!!processingAction} className="h-9 px-3 flex items-center justify-center gap-1 rounded-lg bg-white text-blue-600 border border-blue-100 shadow-sm hover:bg-blue-50 transition text-xs font-bold" title="แก้ไข">
                           <Icon name="pencil-simple" weight="bold" size={16}/> <span className="hidden sm:inline">แก้ไข</span>
                       </button>
@@ -4355,8 +4323,6 @@
                       </button>
                     </div>
                   )}
-                  
-                  {/* --- โหมดแก้ไข --- */}
                   {isEditing ? (
                     <div className="pt-0 animate-fade-in">
                       <button onClick={() => setIsEditing(false)} disabled={!!processingAction} className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-blue-600 transition mb-4">
@@ -4366,18 +4332,13 @@
                       <button onClick={() => setIsEditing(false)} disabled={!!processingAction} className="w-full mt-3 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition">ยกเลิกการแก้ไข</button>
                     </div>
                   ) : (
-                    /* --- โหมดแสดงรายละเอียด --- */
                     <div className="animate-fade-in pt-2">
-                      {/* Header Card */}
                       <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl text-center border border-gray-100 shadow-sm relative overflow-hidden mt-2">
                           <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl text-[10px] font-bold shadow-sm ${getStatusColor(selectedBill.status)}`}>{selectedBill.status || 'ค้างชำระ'}</div>
-                          
                           <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 mt-2">ยอดชำระสุทธิ</p>
                           <h2 className="text-4xl font-extrabold text-gray-800 tracking-tight">฿{total.toLocaleString()}</h2>
                           <p className="text-sm text-primary font-medium mt-2">{selectedBill.item}</p>
                       </div>
-
-                      {/* Details List */}
                       <div className="space-y-0 mt-4 border border-gray-100 rounded-2xl overflow-hidden">
                           <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="hash" weight="bold"/> รหัสบิล</span>
@@ -4385,45 +4346,34 @@
                           </div>
                           <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="user" weight="bold"/> นักศึกษา</span>
-                              <span className="font-medium text-sm text-right">{selectedBill.studentId} <br/><span className="text-primary text-xs">{data.students.find(s => s.id === selectedBill.studentId)?.name}</span></span>
+                              <span className="font-medium text-sm text-right">{selectedBill.studentId} <br/><span className="text-primary text-xs">{data.students?.find(s => s.id === selectedBill.studentId)?.name}</span></span>
                           </div>
                           <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="calendar-check" weight="bold"/> ครบกำหนด</span>
                               <span className="font-medium text-sm">{formatDate(selectedBill.dueDate)}</span>
                           </div>
-                          
-                          {/* เงินต้น */}
                           <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="currency-btc" weight="bold"/> เงินต้น</span>
                               <span className="font-medium text-sm">{amount.toLocaleString()}</span>
                           </div>
-
-                          {/* ค่าปรับ */}
                           {fine > 0 && (
                               <div className="flex justify-between py-3 px-4 bg-orange-50/50 border-b border-orange-50 items-center">
                                   <span className="text-xs text-orange-600 font-bold flex items-center gap-2"><Icon name="warning-circle" weight="bold"/> ค่าปรับล่าช้า</span>
                                   <span className="font-bold text-sm text-orange-600">+{fine.toLocaleString()}</span>
                               </div>
                           )}
-
-                          {/* ส่วนลด */}
                           {discount > 0 && (
                               <div className="flex justify-between py-3 px-4 bg-green-50/50 border-b border-green-50 items-center">
                                   <span className="text-xs text-green-600 font-bold flex items-center gap-2"><Icon name="percent" weight="bold"/> ส่วนลด</span>
                                   <span className="font-bold text-sm text-green-600">-{discount.toLocaleString()}</span>
                               </div>
                           )}
-                          
-                          {/* ✅ วันที่ชำระ (เพิ่มเวลา) */}
                           {selectedBill.payDate && (
                               <div className="flex justify-between py-3 px-4 bg-emerald-50/50 border-b border-emerald-50 items-center">
                                   <span className="text-xs text-emerald-600 font-bold flex items-center gap-2"><Icon name="check-circle" weight="bold"/> วันที่ชำระ</span>
-                                  {/* ใช้ formatDateTime แทน formatDate */}
-                                  <span className="font-bold text-sm text-green-700">{formatDateTime(selectedBill.payDate)}</span>
+                                  <span className="font-bold text-sm text-emerald-700">{formatDateDateTime(selectedBill.payDate)}</span>
                               </div>
                           )}
-
-                          {/* หลักฐาน */}
                           <div className="flex justify-between py-3 px-4 bg-white items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="image" weight="bold"/> หลักฐาน</span>
                               {selectedBill.slipUrl ? (
@@ -4435,7 +4385,6 @@
                               )}
                           </div>
                       </div>
-
                       <div className="mt-6">{renderBillButtons()}</div>
                     </div>
                   )}
@@ -4443,9 +4392,10 @@
               );
             })()}
           </Modal>
+
           <ConfirmModal isOpen={isDeleteConfirmOpen} onClose={() => !processingAction && setIsDeleteConfirmOpen(false)} onConfirm={confirmDelete} title={deleteTarget?.type === 'HISTORY' ? "ยืนยันลบประวัติ" : (deleteTarget?.type === 'STUDENT' ? "ยืนยันลบนักศึกษา" : (deleteTarget?.type === 'QR' ? "ยืนยันลบ QR Code" : (deleteTarget?.type === 'PRODUCT' ? "ยืนยันลบสินค้า" : (deleteTarget?.type === 'ORDER' ? "ยืนยันลบออเดอร์" : "ยืนยันการลบบิล"))))} message={getConfirmMessage()} loading={processingAction === 'DELETE'} />
           <ConfirmModal isOpen={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} onConfirm={handleResetBill} title="ยืนยันการรีเซ็ตบิล" message={`ระบบจะทำการลบ:\n- วันที่ชำระ\n- รูปสลิป\n- รหัสอ้างอิง\n\nคุณยืนยันที่จะรีเซ็ตสถานะใช่หรือไม่?`} loading={processingAction === 'RESET'} confirmText="ยืนยันรีเซ็ต" isDestructive={true} />
-          {/* ✅ เพิ่ม ConfirmModal สำหรับการทวงถามตรงนี้ครับ */}
+          
           <ConfirmModal 
               isOpen={isOverdueConfirmOpen} 
               onClose={() => setIsOverdueConfirmOpen(false)} 
@@ -4459,11 +4409,12 @@
               confirmText="ยืนยันส่ง" 
               isDestructive={false} 
           />
+
           <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="แก้ไขประกาศ"><div className="space-y-4"><textarea value={editAnnouncement} onChange={(e) => setEditAnnouncement(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[150px]" placeholder="พิมพ์ข้อความประกาศที่นี่..."></textarea><button onClick={handleSaveAnnouncement} disabled={loading} className="w-full py-3 rounded-xl bg-primary text-white font-medium shadow-lg hover:bg-blue-700 transition">{loading ? 'กำลังบันทึก...' : 'บันทึกประกาศ'}</button></div></Modal>
           <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างบิลใหม่"><BillForm students={data.students} onSubmit={handleCreateBill} loading={processingAction === 'CREATE_BILL'} /></Modal>
           <Modal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} title={selectedStudent ? "แก้ไขนักศึกษา" : "เพิ่มนักศึกษา"}><StudentForm onSubmit={handleSaveStudent} loading={processingAction === 'SAVE_STUDENT'} initialData={selectedStudent} /></Modal>
-          <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students.find(s => s.id === viewingStudentId)} bills={data.bills.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
-          <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
+          <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students?.find(s => s.id === viewingStudentId)} bills={data.bills?.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
+          <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
         </div>
