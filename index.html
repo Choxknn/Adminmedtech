@@ -3788,7 +3788,6 @@
       const [pin, setPin] = useState('');
       const [error, setError] = useState(false);
       const [loading, setLoading] = useState(false);
-      const CORRECT_PIN = '080805'; // ✅ รหัสผ่านที่คุณกำหนด
 
       // ✅ ดักจับการกดแป้นพิมพ์ (Numpad / คีย์บอร์ด)
       useEffect(() => {
@@ -4496,6 +4495,7 @@ return (
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
         </div>
       );
+    };
       
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
