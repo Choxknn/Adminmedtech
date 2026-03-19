@@ -4224,21 +4224,23 @@
           return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
       }
 
-      return (
-        // 1. เพิ่ม md:flex เพื่อจัด Layout ซ้าย-ขวาบนจอใหญ่
-        <div className="min-h-screen bg-background text-gray-800 font-sans md:flex">
+return (
+        // 1. เพิ่ม md:flex เพื่อจัดเลย์เอาต์ซ้าย-ขวาเมื่อเป็นจอใหญ่
+        <div className="min-h-screen bg-background text-gray-800 font-sans md:flex relative">
           
           {showSuccess && <SuccessScreen />}
           {processingAction && <LoadingOverlay />}
 
-          {/* 2. SIDEBAR สำหรับหน้าจอคอมพิวเตอร์/iPad (ซ่อนบนมือถือด้วย hidden md:flex) */}
+          {/* === 🖥️ SIDEBAR สำหรับ iPad และ PC (ซ่อนในมือถือ) === */}
           <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-100 h-screen sticky top-0 px-4 py-6 shadow-sm z-40">
             <div className="flex items-center gap-3 mb-8 px-2">
-              <div className="bg-primary p-2.5 rounded-xl text-white shadow-lg shadow-blue-200"><Icon name="graduation-cap" weight="fill" size={24}/></div>
+              <div className="bg-primary p-2.5 rounded-xl text-white shadow-lg shadow-blue-200">
+                <Icon name="graduation-cap" weight="fill" size={24}/>
+              </div>
               <h1 className="text-2xl font-black text-gray-800 tracking-tight">Admin <span className="text-primary">CHOKUN</span></h1>
             </div>
             
-            <nav className="flex flex-col gap-2">
+            <nav className="flex flex-col gap-2 overflow-y-auto no-scrollbar">
               {[ 
                 { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
                 { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: data.bills?.filter(b => b.status === 'รอตรวจสอบ').length || 0 }, 
@@ -4253,7 +4255,11 @@
                 return (
                   <button 
                     key={tab.id} 
-                    onClick={() => { setActiveTab(tab.id); if(tab.id==='notifications') setNotificationSubTab('general'); if(tab.id==='bills') setBillFilter('all'); }} 
+                    onClick={() => { 
+                        setActiveTab(tab.id); 
+                        if(tab.id === 'notifications') setNotificationSubTab('general'); 
+                        if(tab.id === 'bills') setBillFilter('all'); 
+                    }} 
                     className={`flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold transition-all duration-200 w-full text-left relative ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}
                   >
                     <Icon name={tab.icon} size={22} weight={isActive ? 'fill' : 'bold'} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
@@ -4267,10 +4273,9 @@
             </nav>
           </aside>
 
-          {/* 3. กล่องหุ้มเนื้อหาหลัก ให้กินพื้นที่ที่เหลือด้วย flex-1 */}
+          {/* === 📱 พื้นที่แสดงเนื้อหาหลัก === */}
           <div className="flex-1 flex flex-col min-w-0">
-            
-            {/* Header มือถือ (เพิ่ม md:hidden เพื่อไม่ให้โชว์บนจอคอม) */}
+            {/* Header มือถือ (เพิ่ม md:hidden ซ่อนในจอใหญ่) */}
             <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center md:hidden">
               <div className="flex items-center gap-2">
                 <div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div>
@@ -4281,7 +4286,7 @@
               </button>
             </header>
 
-            {/* เพิ่ม max-w-5xl ให้กว้างขึ้นเวลาดูบนจอคอม */}
+            {/* Main Content (เพิ่ม max-w-5xl ให้จอใหญ่กว้างขึ้น) */}
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
@@ -4298,7 +4303,7 @@
             </main>
           </div>
 
-          {/* 4. เมนูด้านล่างของมือถือ (เพิ่ม md:hidden เพื่อซ่อนบนจอคอม) */}
+          {/* Bottom Nav มือถือ (เพิ่ม md:hidden) */}
           <nav className="md:hidden fixed bottom-5 left-4 right-4 max-w-lg mx-auto bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl shadow-blue-900/10 px-2 py-3 flex justify-between items-center z-40 animate-slide-up-fade">
             {[ 
               { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
@@ -4314,7 +4319,11 @@
               return (
                 <button 
                   key={tab.id} 
-                  onClick={() => { setActiveTab(tab.id); if(tab.id==='notifications') setNotificationSubTab('general'); if(tab.id==='bills') setBillFilter('all'); }} 
+                  onClick={() => { 
+                    setActiveTab(tab.id); 
+                    if(tab.id==='notifications') setNotificationSubTab('general'); 
+                    if(tab.id==='bills') setBillFilter('all'); 
+                  }} 
                   className={`relative group flex flex-col items-center justify-center transition-all duration-300 ${isActive ? '-translate-y-3' : 'hover:-translate-y-1'}`}
                 >
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
@@ -4337,7 +4346,7 @@
             })}
           </nav>
 
-          {/* --- Modal ทั้งหมด (ผมตัดตัวที่ซ้ำกันทิ้งให้แล้วครับ) --- */}
+          {/* --- Modal รายละเอียดบิล (Admin Side: Updated with Time) --- */}
           <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={isEditing ? "แก้ไขข้อมูลบิล" : "รายละเอียดบิล"} hideClose={!!processingAction} zIndex="z-[60]">
             {selectedBill && (() => {
               const formatDateTime = (dateInput) => {
@@ -4361,7 +4370,9 @@
               const discount = Number(selectedBill.discount) || 0;
               const amount = Number(selectedBill.amount) || 0;
               const total = amount + fine - discount;
-              const today = new Date(); today.setHours(0,0,0,0);
+
+              const today = new Date();
+              today.setHours(0,0,0,0);
               const due = selectedBill.dueDate ? new Date(selectedBill.dueDate) : null;
               if(due) due.setHours(0,0,0,0);
               const isOverdue = due && due < today && selectedBill.status !== 'ชำระแล้ว' && selectedBill.status !== 'ยกเลิก';
@@ -4432,12 +4443,14 @@
                                   <span className="font-bold text-sm text-green-600">-{discount.toLocaleString()}</span>
                               </div>
                           )}
+                          
                           {selectedBill.payDate && (
                               <div className="flex justify-between py-3 px-4 bg-emerald-50/50 border-b border-emerald-50 items-center">
                                   <span className="text-xs text-emerald-600 font-bold flex items-center gap-2"><Icon name="check-circle" weight="bold"/> วันที่ชำระ</span>
                                   <span className="font-bold text-sm text-emerald-700">{formatDateTime(selectedBill.payDate)}</span>
                               </div>
                           )}
+
                           <div className="flex justify-between py-3 px-4 bg-white items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="image" weight="bold"/> หลักฐาน</span>
                               {selectedBill.slipUrl ? (
@@ -4459,19 +4472,31 @@
 
           <ConfirmModal isOpen={isDeleteConfirmOpen} onClose={() => !processingAction && setIsDeleteConfirmOpen(false)} onConfirm={confirmDelete} title={deleteTarget?.type === 'HISTORY' ? "ยืนยันลบประวัติ" : (deleteTarget?.type === 'STUDENT' ? "ยืนยันลบนักศึกษา" : (deleteTarget?.type === 'QR' ? "ยืนยันลบ QR Code" : (deleteTarget?.type === 'PRODUCT' ? "ยืนยันลบสินค้า" : (deleteTarget?.type === 'ORDER' ? "ยืนยันลบออเดอร์" : "ยืนยันการลบบิล"))))} message={getConfirmMessage()} loading={processingAction === 'DELETE'} />
           <ConfirmModal isOpen={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} onConfirm={handleResetBill} title="ยืนยันการรีเซ็ตบิล" message={`ระบบจะทำการลบ:\n- วันที่ชำระ\n- รูปสลิป\n- รหัสอ้างอิง\n\nคุณยืนยันที่จะรีเซ็ตสถานะใช่หรือไม่?`} loading={processingAction === 'RESET'} confirmText="ยืนยันรีเซ็ต" isDestructive={true} />
-          <ConfirmModal isOpen={isOverdueConfirmOpen} onClose={() => setIsOverdueConfirmOpen(false)} onConfirm={() => { setIsOverdueConfirmOpen(false); if(selectedBill) handleSendOverdueNotification(selectedBill.billId); }} title="ยืนยันการทวงถาม" message={`คุณต้องการส่งข้อความแจ้งเตือนทวงถามบิล #${selectedBill?.billId} ไปยัง LINE ของนักศึกษาใช่หรือไม่?`} loading={processingAction === 'NOTIFY'} confirmText="ยืนยันส่ง" isDestructive={false} />
           
+          <ConfirmModal 
+              isOpen={isOverdueConfirmOpen} 
+              onClose={() => setIsOverdueConfirmOpen(false)} 
+              onConfirm={() => {
+                  setIsOverdueConfirmOpen(false);
+                  if(selectedBill) handleSendOverdueNotification(selectedBill.billId);
+              }} 
+              title="ยืนยันการทวงถาม" 
+              message={`คุณต้องการส่งข้อความแจ้งเตือนทวงถามบิล #${selectedBill?.billId} ไปยัง LINE ของนักศึกษาใช่หรือไม่?`} 
+              loading={processingAction === 'NOTIFY'} 
+              confirmText="ยืนยันส่ง" 
+              isDestructive={false} 
+          />
+
           <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="แก้ไขประกาศ"><div className="space-y-4"><textarea value={editAnnouncement} onChange={(e) => setEditAnnouncement(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[150px]" placeholder="พิมพ์ข้อความประกาศที่นี่..."></textarea><button onClick={handleSaveAnnouncement} disabled={loading} className="w-full py-3 rounded-xl bg-primary text-white font-medium shadow-lg hover:bg-blue-700 transition">{loading ? 'กำลังบันทึก...' : 'บันทึกประกาศ'}</button></div></Modal>
           <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างบิลใหม่"><BillForm students={data.students} onSubmit={handleCreateBill} loading={processingAction === 'CREATE_BILL'} /></Modal>
           <Modal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} title={selectedStudent ? "แก้ไขนักศึกษา" : "เพิ่มนักศึกษา"}><StudentForm onSubmit={handleSaveStudent} loading={processingAction === 'SAVE_STUDENT'} initialData={selectedStudent} /></Modal>
-          
           <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students?.find(s => s.id === viewingStudentId)} bills={data.bills?.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
           <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
-          
         </div>
       );
+      
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
