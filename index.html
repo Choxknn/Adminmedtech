@@ -392,33 +392,105 @@
       </div>
     );
 
-    // --- REUSABLE COMPONENT: Student Multi Select ---
+    // --- REUSABLE COMPONENT: Student Multi Select (Updated with Search) ---
     const StudentMultiSelect = ({ students, selectedIds, onChange }) => {
       const [isOpen, setIsOpen] = useState(false);
+      const [studentSearch, setStudentSearch] = useState(''); // ✅ เพิ่ม state ค้นหา
+
+      // ✅ กรองรายชื่อตามที่พิมพ์ค้นหา
+      const filteredStudents = useMemo(() => {
+        if (!studentSearch) return students;
+        const term = studentSearch.toLowerCase();
+        return students.filter(s => s.name.toLowerCase().includes(term) || String(s.id).includes(term));
+      }, [students, studentSearch]);
+
+      // สลับการเลือกทีละคน
       const toggleStudent = (id) => {
-        if (selectedIds.includes(id)) { onChange(selectedIds.filter(sid => sid !== id)); } else { onChange([...selectedIds, id]); }
+        if (selectedIds.includes(id)) { 
+            onChange(selectedIds.filter(sid => sid !== id)); 
+        } else { 
+            onChange([...selectedIds, id]); 
+        }
       };
-      const toggleSelectAll = () => {
-        if (selectedIds.length === students.length) { onChange([]); } else { onChange(students.map(s => s.id)); }
+
+      // ✅ เลือกทั้งหมด (เฉพาะคนที่ค้นหาเจอ)
+      const toggleSelectAllFiltered = () => {
+        const filteredIds = filteredStudents.map(s => s.id);
+        const isAllFilteredSelected = filteredIds.every(id => selectedIds.includes(id));
+        
+        if (isAllFilteredSelected) {
+            onChange(selectedIds.filter(id => !filteredIds.includes(id)));
+        } else {
+            const newIds = [...new Set([...selectedIds, ...filteredIds])];
+            onChange(newIds);
+        }
       };
-      const isAllSelected = students.length > 0 && selectedIds.length === students.length;
+
+      const clearSelection = () => onChange([]);
+
+      const isAllFilteredSelected = filteredStudents.length > 0 && filteredStudents.every(s => selectedIds.includes(s.id));
+
       return (
         <div className="relative">
-          <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full p-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary text-left flex justify-between items-center">
-            <span className={selectedIds.length === 0 ? "text-gray-400" : "text-gray-800"}>{selectedIds.length === 0 ? "-- เลือกนักศึกษา --" : `เลือกแล้ว ${selectedIds.length} คน`}</span><Icon name="caret-down" />
+          <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full p-3 border border-gray-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-primary text-left flex justify-between items-center transition hover:border-blue-300 h-[46px]">
+            <span className={`text-sm font-bold truncate ${selectedIds.length > 0 ? 'text-blue-700' : 'text-gray-400'}`}>
+                {selectedIds.length === 0 ? "-- เลือกนักศึกษา --" : `เลือกแล้ว ${selectedIds.length} คน`}
+            </span>
+            <Icon name={isOpen ? "caret-up" : "caret-down"} className="text-gray-400" weight="bold"/>
           </button>
+          
           {isOpen && (
             <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
-                <div className="absolute z-20 w-full mt-1 bg-white border rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                <div className="p-3 border-b border-gray-100 flex items-center gap-2 cursor-pointer hover:bg-blue-50 sticky top-0 bg-white z-10" onClick={toggleSelectAll}>
-                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isAllSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isAllSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div>
-                    <span className="font-bold text-primary">เลือกทั้งหมด ({students.length})</span>
-                </div>
-                {students.map(s => {
-                    const isSelected = selectedIds.includes(s.id);
-                    return (<div key={s.id} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50/50' : ''}`} onClick={() => toggleStudent(s.id)}><div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div><div><div className="text-sm font-medium text-gray-800">{s.name}</div><div className="text-xs text-gray-500">{s.id}</div></div></div>);
-                })}
+                <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl flex flex-col animate-fade-in overflow-hidden">
+                    
+                    {/* ✅ Header: ช่องค้นหา และ ปุ่มเครื่องมือ */}
+                    <div className="p-2 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                            <input 
+                                type="text" 
+                                placeholder="ค้นหาชื่อ หรือ รหัส..." 
+                                value={studentSearch}
+                                onChange={(e) => setStudentSearch(e.target.value)}
+                                className="w-full pl-7 pr-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-500 transition"
+                                autoFocus
+                            />
+                            <Icon name="magnifying-glass" className="absolute left-2 top-2.5 text-gray-400" size={14}/>
+                        </div>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={toggleSelectAllFiltered} className="flex-1 px-3 py-1.5 bg-blue-100 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-200 whitespace-nowrap transition shadow-sm">
+                                {isAllFilteredSelected ? 'ยกเลิกเลือก' : 'เลือกที่ค้นหา'}
+                            </button>
+                            <button type="button" onClick={clearSelection} className="px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-[10px] font-bold hover:bg-gray-300 whitespace-nowrap transition shadow-sm">
+                                ล้างค่า
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ✅ List: รายชื่อนักศึกษา */}
+                    <div className="max-h-56 overflow-y-auto custom-scrollbar p-1">
+                        {filteredStudents.map(s => {
+                            const isSelected = selectedIds.includes(s.id);
+                            return (
+                                <div key={s.id} className={`p-2.5 flex items-center gap-3 cursor-pointer rounded-xl transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`} onClick={() => toggleStudent(s.id)}>
+                                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors flex-shrink-0 ${isSelected ? 'bg-primary border-primary' : 'bg-white border-gray-300'}`}>
+                                        {isSelected && <Icon name="check" className="text-white" size={12} weight="bold" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className={`text-sm font-bold truncate ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{s.name}</div>
+                                        <div className="text-[10px] text-gray-400 font-mono">{s.id}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {filteredStudents.length === 0 && <p className="text-center text-xs text-gray-400 py-6 font-medium">ไม่พบรายชื่อที่ค้นหา</p>}
+                    </div>
+                    
+                    {/* ✅ Footer: ปุ่มปิด */}
+                    <div className="p-2 bg-gray-50 border-t border-gray-100 text-center">
+                        <button type="button" onClick={() => setIsOpen(false)} className="text-xs font-bold text-blue-600 hover:underline px-4 py-1">ปิดหน้าต่าง</button>
+                    </div>
+
                 </div>
             </>
           )}
@@ -3002,7 +3074,7 @@
       );
     };
 
-    // --- Order View (Fixed: Overlay Loading & Sequence) ---
+    // --- Order View (Updated: แยกรายละเอียดออเดอร์เป็นสัดส่วน) ---
     const OrderView = ({ orderData, students, onToggleSystem, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, processingAction, onEditOrder, setOrderData }) => {
         const [subTab, setSubTab] = useState('orders');
         const [isModalOpen, setIsModalOpen] = useState(false);
@@ -3019,16 +3091,51 @@
         const [isProcessingBulk, setIsProcessingBulk] = useState(false);
         const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
 
-        // --- Custom Alert State ---
-        const [alertState, setAlertState] = useState({ 
-            isOpen: false, 
-            title: '', 
-            message: '', 
-            onConfirm: null, 
-            type: 'info' 
-        });
+        const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'info' });
 
-        // --- Helper Function ---
+        // ✅ ฟังก์ชันแยกรายละเอียดออเดอร์ (Parser)
+        const parseOrderItems = (itemsStr) => {
+            if (!itemsStr) return [];
+            // แยกรายการด้วยบรรทัดใหม่ หรือ ลูกน้ำ(,) ที่ไม่ได้อยู่ในวงเล็บ
+            const rawItems = itemsStr.includes('\n') 
+                ? itemsStr.split('\n') 
+                : itemsStr.split(/,(?![^(]*\))/);
+            
+            return rawItems.map(raw => {
+                let text = raw.trim();
+                if (!text) return null;
+                
+                // 1. หาจำนวน (x 1, x10) จากท้ายข้อความ
+                const qtyMatch = text.match(/\s*x\s*(\d+)$/i);
+                let qty = 1;
+                let nameWithOptions = text;
+                
+                if (qtyMatch) {
+                    qty = parseInt(qtyMatch[1], 10);
+                    nameWithOptions = text.slice(0, qtyMatch.index).trim();
+                }
+
+                // 2. หาตัวเลือกในวงเล็บอันสุดท้าย
+                let name = nameWithOptions;
+                let options = [];
+                
+                // ค้นหาวงเล็บอันสุดท้ายสุด
+                const optMatch = nameWithOptions.match(/\(([^)]+)\)$/);
+                
+                if (optMatch) {
+                    const insideParens = optMatch[1];
+                    // เช็คว่าเป็นตัวเลือกจริงๆ ไหม (มักจะมีเครื่องหมาย : หรือ ,) 
+                    if (insideParens.includes(':') || insideParens.includes(',')) {
+                        name = nameWithOptions.slice(0, optMatch.index).trim();
+                        // แยกตัวเลือกแต่ละอันออกจากกัน
+                        options = insideParens.split(',').map(opt => opt.trim());
+                    }
+                }
+
+                return { name, options, qty, original: text };
+            }).filter(Boolean);
+        };
+
         const formatDateSafe = (isoDate) => {
             if (!isoDate) return '-';
             try { return new Date(isoDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute:'2-digit' }); } catch (e) { return '-'; }
@@ -3057,78 +3164,49 @@
         };
 
         // --- Bulk Actions Logic ---
-        
         const confirmBulkStatusUpdate = () => {
             if (filteredOrders.length === 0) return;
-            setIsBulkStatusOpen(false); // ปิด Modal เลือก
-            
-            // เปิด Confirm
+            setIsBulkStatusOpen(false);
             setAlertState({
-                isOpen: true,
-                type: 'info',
-                title: 'ยืนยันการเปลี่ยนสถานะ',
+                isOpen: true, type: 'info', title: 'ยืนยันการเปลี่ยนสถานะ',
                 message: `คุณต้องการเปลี่ยนสถานะ ${filteredOrders.length} รายการ เป็น "${bulkTargetStatus}" ใช่หรือไม่?`,
                 onConfirm: executeBulkStatusUpdate
             });
         };
 
         const executeBulkStatusUpdate = async () => {
-            // 1. ปิด Alert Confirm
             setAlertState(prev => ({ ...prev, isOpen: false }));
-            
-            // 2. รอเล็กน้อยแล้วเปิด Loading (Overlay)
             setTimeout(async () => {
                 setIsProcessingBulk(true);
                 setBulkProgress({ current: 0, total: filteredOrders.length });
-
                 let completed = 0;
                 for (const order of filteredOrders) {
-                    // เช็คว่าต้องเปลี่ยนไหม (ถ้าสถานะตรงกันอยู่แล้วก็ข้าม แต่ยังนับ Progress)
                     if (order.status !== bulkTargetStatus) {
                         await new Promise(resolve => {
                             onUpdateStatus(order.orderId, bulkTargetStatus);
-                            setTimeout(resolve, 800); // หน่วงเวลาให้เห็น Process
+                            setTimeout(resolve, 800);
                         });
                     }
                     completed++;
                     setBulkProgress(prev => ({ ...prev, current: completed }));
                 }
-
-                // 3. ทำงานเสร็จ -> ปิด Loading
                 setIsProcessingBulk(false);
-
-                // 4. รอ 0.5 วิ แล้วค่อยเปิด Success Popup
                 setTimeout(() => {
-                    setAlertState({
-                        isOpen: true,
-                        type: 'success',
-                        title: 'เรียบร้อย',
-                        message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`,
-                        onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false }))
-                    });
+                    setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) });
                 }, 500);
-
             }, 100);
         };
 
         const confirmBulkDelete = () => {
              if (filteredOrders.length === 0) return;
-             setAlertState({
-                isOpen: true,
-                type: 'danger',
-                title: '⚠️ ยืนยันการลบข้อมูล',
-                message: `คุณกำลังจะลบออเดอร์ ${filteredOrders.length} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันหรือไม่?`,
-                onConfirm: executeBulkDelete
-            });
+             setAlertState({ isOpen: true, type: 'danger', title: '⚠️ ยืนยันการลบข้อมูล', message: `คุณกำลังจะลบออเดอร์ ${filteredOrders.length} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันหรือไม่?`, onConfirm: executeBulkDelete });
         };
 
         const executeBulkDelete = async () => {
              setAlertState(prev => ({ ...prev, isOpen: false }));
-
              setTimeout(async () => {
                 setIsProcessingBulk(true);
                 setBulkProgress({ current: 0, total: filteredOrders.length });
-
                 let completed = 0;
                 for (const order of filteredOrders) {
                     await new Promise(resolve => {
@@ -3138,23 +3216,13 @@
                     completed++;
                     setBulkProgress(prev => ({ ...prev, current: completed }));
                 }
-
                 setIsProcessingBulk(false);
-
                 setTimeout(() => {
-                    setAlertState({
-                        isOpen: true,
-                        type: 'success',
-                        title: 'เรียบร้อย',
-                        message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`,
-                        onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false }))
-                    });
+                    setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) });
                 }, 500);
-
              }, 100);
         };
 
-        // Helper: Status Colors
         const getOrderStatusStyle = (status) => {
             switch(status) {
                 case 'ชำระแล้ว': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -3243,9 +3311,7 @@
                         {filteredProducts.map((p) => (
                             <div key={p.id} className="group bg-white p-3 rounded-2xl card-shadow border border-gray-100 hover:border-blue-200 transition relative overflow-hidden">
                                 <div className="aspect-square bg-gray-50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
-                                    {/* ✅ เรียกใช้ ProductImageGallery แทน img ธรรมดา */}
                                     <ProductImageGallery imageString={p.image} />
-                                    
                                     <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-20 ${getProductStatusStyle(p.status)}`}>{p.status}</span>
                                 </div>
                                 <h4 className="font-bold text-sm text-gray-800 line-clamp-1 mb-1">{p.name}</h4>
@@ -3286,6 +3352,7 @@
                        {filteredOrders.map((o) => { 
                            const studentName = students?.find(s => String(s.id) === String(o.studentId))?.name || 'ไม่พบชื่อ';
                            const statusStyle = getOrderStatusStyle(o.status);
+                           const parsedItems = parseOrderItems(o.items);
                            
                            return (
                               <div key={o.orderId} className="bg-white rounded-2xl card-shadow border border-gray-100 overflow-hidden hover:shadow-md transition group">
@@ -3303,9 +3370,41 @@
                                           {o.slip && (<button onClick={()=>onViewSlip(o.slip)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition" title="ดูสลิป"><Icon name="image" weight="fill" size={16}/></button>)}
                                       </div>
 
-                                      <div className="bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200 mb-3 relative overflow-hidden">
-                                          <div className="absolute top-0 left-0 w-1 h-full bg-gray-200"></div>
-                                          <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium pl-2">{o.items}</p>
+                                      {/* ✅ กล่องแสดงรายการออเดอร์แบบใหม่ (แยกชื่อ, ตัวเลือก, จำนวน) */}
+                                      <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 mb-3 relative overflow-hidden">
+                                          <div className="absolute top-0 left-0 w-1 h-full bg-gray-300"></div>
+                                          <div className="pl-2 space-y-3">
+                                              {parsedItems.length > 0 ? parsedItems.map((item, i) => (
+                                                  <div key={i} className="flex justify-between items-start gap-2">
+                                                      <div className="flex-1 min-w-0">
+                                                          <div className="text-xs font-bold text-gray-800 leading-tight">{item.name}</div>
+                                                          {/* ถ้ามีตัวเลือก (Options) ให้แสดงเป็น Tag */}
+                                                          {item.options.length > 0 && (
+                                                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                                  {item.options.map((opt, j) => {
+                                                                      // ลองแยกด้วย : เพื่อทำสีตัวหนาตรงหัวข้อ
+                                                                      const parts = opt.split(':');
+                                                                      const key = parts.length > 1 ? parts[0] : null;
+                                                                      const val = parts.length > 1 ? parts.slice(1).join(':') : opt;
+                                                                      
+                                                                      return (
+                                                                          <span key={j} className="inline-flex items-center text-[10px] bg-white border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded-md shadow-sm">
+                                                                              {key ? <><span className="font-bold text-gray-400 mr-1">{key}:</span><span className="text-gray-700 font-medium">{val}</span></> : opt}
+                                                                          </span>
+                                                                      );
+                                                                  })}
+                                                              </div>
+                                                          )}
+                                                      </div>
+                                                      {/* กล่องจำนวน */}
+                                                      <div className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg flex-shrink-0 border border-indigo-100">
+                                                          x{item.qty}
+                                                      </div>
+                                                  </div>
+                                              )) : (
+                                                  <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium">{o.items}</p>
+                                              )}
+                                          </div>
                                       </div>
 
                                       <div className="flex justify-between items-end">
@@ -3362,7 +3461,7 @@
                 </div>
              </Modal>
 
-             {/* ✅ Beautiful Custom Alert Modal */}
+             {/* ✅ Custom Alert Modal */}
              <Modal isOpen={alertState.isOpen} onClose={() => setAlertState({ ...alertState, isOpen: false })} title={alertState.type === 'danger' ? "คำเตือน" : (alertState.type === 'success' ? "เรียบร้อย" : "ยืนยัน")} zIndex="z-[120]">
                  <div className="space-y-4 pt-2 text-center">
                      <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 ${
@@ -3398,7 +3497,7 @@
                  </div>
              </Modal>
 
-             {/* ✅ Overlay Loading (แสดงทับหน้าจอทั้งหมดเมื่อทำงาน) */}
+             {/* ✅ Overlay Loading */}
              {isProcessingBulk && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
                     <div className="flex flex-col items-center justify-center w-[90%] max-w-sm bg-white rounded-3xl p-8 card-shadow">
@@ -3418,7 +3517,7 @@
           </div>
         );
     };
-
+    
     // ==========================================
     // 💰 FINANCE COMPONENTS (หน้าจอการเงิน)
     // ==========================================
@@ -3435,9 +3534,10 @@
       const [receiptPreview, setReceiptPreview] = useState(null);
       const [slipPreview, setSlipPreview] = useState(null);
       
-      // ✅ State สำหรับ Dropdown เลือกรายชื่อ
+      // ✅ State สำหรับ Dropdown เลือกรายชื่อ และช่องค้นหา
       const [isPersonOpen, setIsPersonOpen] = useState(false);
       const [selectedPersons, setSelectedPersons] = useState([]);
+      const [personSearch, setPersonSearch] = useState(''); // เพิ่ม state สำหรับค้นหา
 
       useEffect(() => {
         if (initialData && initialData.id) {
@@ -3457,6 +3557,13 @@
           setSelectedPersons([]);
         }
       }, [initialData, defaultProject]);
+
+      // ✅ กรองรายชื่อนักศึกษาตามคำค้นหา
+      const filteredStudents = useMemo(() => {
+          if (!personSearch) return students;
+          const term = personSearch.toLowerCase();
+          return students.filter(s => s.name.toLowerCase().includes(term) || String(s.id).includes(term));
+      }, [students, personSearch]);
 
       const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -3512,13 +3619,11 @@
             <input type="text" name="project" value={form.project} onChange={handleChange} placeholder="เช่น รับน้อง, กีฬาสี, ส่วนกลาง" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-bold"/>
           </div>
 
-          {/* รายการ (เต็มความกว้าง) */}
           <div>
               <label className="text-xs font-bold text-gray-500 mb-1 block">รายการ</label>
               <input type="text" name="item" value={form.item} onChange={handleChange} placeholder="รายละเอียดรายรับ/จ่าย" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 text-sm font-medium"/>
           </div>
 
-          {/* ✅ ย้ายจำนวนเงิน และ ผู้รับผิดชอบ ให้อยู่แถวเดียวกัน (grid-cols-2) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold text-gray-500 mb-1 block">จำนวนเงิน (บาท)</label>
@@ -3538,28 +3643,51 @@
               {isPersonOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsPersonOpen(false)}></div>
-                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto custom-scrollbar animate-fade-in p-1">
-                    {students.map(s => {
-                      const isSelected = selectedPersons.includes(s.name);
-                      return (
-                        <div key={s.id} onClick={() => togglePerson(s.name)} className={`p-2.5 flex items-center gap-3 cursor-pointer rounded-xl transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                          <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'}`}>
-                            {isSelected && <Icon name="check" size={12} weight="bold" className="text-white"/>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-bold truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>{s.name}</p>
-                          </div>
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden animate-fade-in flex flex-col">
+                    
+                    {/* ✅ ส่วนค้นหารายชื่อ */}
+                    <div className="p-2 border-b border-gray-100 bg-gray-50 flex gap-2">
+                        <div className="relative flex-1">
+                            <input 
+                                type="text" 
+                                placeholder="ค้นหาชื่อ..." 
+                                value={personSearch}
+                                onChange={(e) => setPersonSearch(e.target.value)}
+                                className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-500"
+                                autoFocus
+                            />
+                            <Icon name="magnifying-glass" className="absolute left-2 top-2 text-gray-400" size={12}/>
                         </div>
-                      )
-                    })}
-                    {students.length === 0 && <p className="text-center text-xs text-gray-400 py-4 font-medium">ไม่มีรายชื่อในระบบ</p>}
+                        <button type="button" onClick={() => setSelectedPersons([])} className="px-2 py-1 bg-gray-200 text-gray-600 rounded-lg text-[10px] font-bold hover:bg-gray-300 whitespace-nowrap">ล้างค่า</button>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+                      {filteredStudents.map(s => {
+                        const isSelected = selectedPersons.includes(s.name);
+                        return (
+                          <div key={s.id} onClick={() => togglePerson(s.name)} className={`p-2.5 flex items-center gap-3 cursor-pointer rounded-xl transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                            <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'}`}>
+                              {isSelected && <Icon name="check" size={12} weight="bold" className="text-white"/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-bold truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>{s.name}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {filteredStudents.length === 0 && <p className="text-center text-xs text-gray-400 py-4 font-medium">ไม่พบรายชื่อที่ค้นหา</p>}
+                    </div>
+
+                    {/* ปุ่มปิดหน้าต่าง */}
+                    <div className="p-2 bg-gray-50 border-t border-gray-100 text-center">
+                        <button type="button" onClick={() => setIsPersonOpen(false)} className="text-xs font-bold text-blue-600 hover:underline">ปิดหน้าต่าง</button>
+                    </div>
                   </div>
                 </>
               )}
             </div>
           </div>
 
-          {/* ✅ อัปโหลดรูปภาพ ดีไซน์เหมือนบิล */}
           <div className="grid grid-cols-2 gap-3 pt-2">
             {/* ใบเสร็จ */}
             <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
