@@ -3074,7 +3074,7 @@
       );
     };
 
-    // --- Order View (Updated: แยกรายละเอียดออเดอร์เป็นสัดส่วน) ---
+    // --- Order View (Updated: ดีไซน์ใหม่ กรุ๊ปออเดอร์ตามนักศึกษา + แยกรายละเอียด) ---
     const OrderView = ({ orderData, students, onToggleSystem, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, processingAction, onEditOrder, setOrderData }) => {
         const [subTab, setSubTab] = useState('orders');
         const [isModalOpen, setIsModalOpen] = useState(false);
@@ -3093,19 +3093,15 @@
 
         const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'info' });
 
-        // ✅ ฟังก์ชันแยกรายละเอียดออเดอร์ (Parser)
+        // ✅ 1. ฟังก์ชันแยกรายละเอียดออเดอร์ (Parser)
         const parseOrderItems = (itemsStr) => {
             if (!itemsStr) return [];
-            // แยกรายการด้วยบรรทัดใหม่ หรือ ลูกน้ำ(,) ที่ไม่ได้อยู่ในวงเล็บ
-            const rawItems = itemsStr.includes('\n') 
-                ? itemsStr.split('\n') 
-                : itemsStr.split(/,(?![^(]*\))/);
+            const rawItems = itemsStr.includes('\n') ? itemsStr.split('\n') : itemsStr.split(/,(?![^(]*\))/);
             
             return rawItems.map(raw => {
                 let text = raw.trim();
                 if (!text) return null;
                 
-                // 1. หาจำนวน (x 1, x10) จากท้ายข้อความ
                 const qtyMatch = text.match(/\s*x\s*(\d+)$/i);
                 let qty = 1;
                 let nameWithOptions = text;
@@ -3115,23 +3111,17 @@
                     nameWithOptions = text.slice(0, qtyMatch.index).trim();
                 }
 
-                // 2. หาตัวเลือกในวงเล็บอันสุดท้าย
                 let name = nameWithOptions;
                 let options = [];
-                
-                // ค้นหาวงเล็บอันสุดท้ายสุด
                 const optMatch = nameWithOptions.match(/\(([^)]+)\)$/);
                 
                 if (optMatch) {
                     const insideParens = optMatch[1];
-                    // เช็คว่าเป็นตัวเลือกจริงๆ ไหม (มักจะมีเครื่องหมาย : หรือ ,) 
                     if (insideParens.includes(':') || insideParens.includes(',')) {
                         name = nameWithOptions.slice(0, optMatch.index).trim();
-                        // แยกตัวเลือกแต่ละอันออกจากกัน
                         options = insideParens.split(',').map(opt => opt.trim());
                     }
                 }
-
                 return { name, options, qty, original: text };
             }).filter(Boolean);
         };
@@ -3143,15 +3133,44 @@
 
         const safeProducts = Array.isArray(orderData?.products) ? orderData.products : [];
         const safeOrders = Array.isArray(orderData?.orders) ? orderData.orders : [];
-        
         const filteredProducts = safeProducts.filter(p => String(p.name||'').toLowerCase().includes(searchTerm.toLowerCase()));
         
+        // ✅ 2. กรองออเดอร์ก่อน
         const filteredOrders = safeOrders.filter(o => { 
             const sName = students?.find(s => String(s.id) === String(o.studentId))?.name || ''; 
             const term = searchTerm.toLowerCase(); 
             const safeVal = (v) => String(v || '').toLowerCase(); 
             return safeVal(o.orderId).includes(term) || safeVal(o.studentId).includes(term) || safeVal(sName).includes(term); 
         });
+
+        // ✅ 3. จัดกลุ่มออเดอร์ตามนักศึกษา (Group by Student)
+        const [sortOrder, setSortOrder] = useState('newest');
+        const groupedOrders = useMemo(() => {
+            const groups = {};
+            filteredOrders.forEach(o => {
+                const sId = String(o.studentId);
+                if (!groups[sId]) {
+                    const sName = students?.find(s => String(s.id) === sId)?.name || 'ไม่พบชื่อ';
+                    groups[sId] = {
+                        studentId: sId,
+                        studentName: sName,
+                        totalPrice: 0,
+                        orders: [],
+                        latestDate: 0
+                    };
+                }
+                groups[sId].orders.push(o);
+                groups[sId].totalPrice += Number(o.price) || 0;
+                
+                const orderTime = new Date(o.date).getTime() || 0;
+                if (orderTime > groups[sId].latestDate) groups[sId].latestDate = orderTime;
+            });
+            
+            // เรียงลำดับกลุ่มตามวันที่สั่งล่าสุด
+            return Object.values(groups).sort((a, b) => {
+                return sortOrder === 'newest' ? b.latestDate - a.latestDate : a.latestDate - b.latestDate;
+            });
+        }, [filteredOrders, students, sortOrder]);
         
         const handleScanSuccess = (text) => setSearchTerm(text);
         const handleAddProduct = () => { setEditingProduct(null); setIsModalOpen(true); };
@@ -3167,33 +3186,22 @@
         const confirmBulkStatusUpdate = () => {
             if (filteredOrders.length === 0) return;
             setIsBulkStatusOpen(false);
-            setAlertState({
-                isOpen: true, type: 'info', title: 'ยืนยันการเปลี่ยนสถานะ',
-                message: `คุณต้องการเปลี่ยนสถานะ ${filteredOrders.length} รายการ เป็น "${bulkTargetStatus}" ใช่หรือไม่?`,
-                onConfirm: executeBulkStatusUpdate
-            });
+            setAlertState({ isOpen: true, type: 'info', title: 'ยืนยันการเปลี่ยนสถานะ', message: `คุณต้องการเปลี่ยนสถานะ ${filteredOrders.length} รายการ เป็น "${bulkTargetStatus}" ใช่หรือไม่?`, onConfirm: executeBulkStatusUpdate });
         };
 
         const executeBulkStatusUpdate = async () => {
             setAlertState(prev => ({ ...prev, isOpen: false }));
             setTimeout(async () => {
-                setIsProcessingBulk(true);
-                setBulkProgress({ current: 0, total: filteredOrders.length });
+                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
                 let completed = 0;
                 for (const order of filteredOrders) {
                     if (order.status !== bulkTargetStatus) {
-                        await new Promise(resolve => {
-                            onUpdateStatus(order.orderId, bulkTargetStatus);
-                            setTimeout(resolve, 800);
-                        });
+                        await new Promise(resolve => { onUpdateStatus(order.orderId, bulkTargetStatus); setTimeout(resolve, 800); });
                     }
-                    completed++;
-                    setBulkProgress(prev => ({ ...prev, current: completed }));
+                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
                 }
                 setIsProcessingBulk(false);
-                setTimeout(() => {
-                    setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) });
-                }, 500);
+                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
             }, 100);
         };
 
@@ -3205,33 +3213,26 @@
         const executeBulkDelete = async () => {
              setAlertState(prev => ({ ...prev, isOpen: false }));
              setTimeout(async () => {
-                setIsProcessingBulk(true);
-                setBulkProgress({ current: 0, total: filteredOrders.length });
+                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
                 let completed = 0;
                 for (const order of filteredOrders) {
-                    await new Promise(resolve => {
-                        onDeleteOrder(order.orderId);
-                        setTimeout(resolve, 800);
-                    });
-                    completed++;
-                    setBulkProgress(prev => ({ ...prev, current: completed }));
+                    await new Promise(resolve => { onDeleteOrder(order.orderId); setTimeout(resolve, 800); });
+                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
                 }
                 setIsProcessingBulk(false);
-                setTimeout(() => {
-                    setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) });
-                }, 500);
+                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
              }, 100);
         };
 
         const getOrderStatusStyle = (status) => {
             switch(status) {
-                case 'ชำระแล้ว': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-                case 'รอตรวจสอบ': return 'bg-amber-100 text-amber-700 border-amber-200';
+                case 'ชำระแล้ว': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                case 'รอตรวจสอบ': return 'bg-amber-50 text-amber-700 border-amber-200';
                 case 'ยกเลิก': return 'bg-gray-100 text-gray-500 border-gray-200';
-                case 'อยู่ระหว่างผลิต': return 'bg-purple-100 text-purple-700 border-purple-200';
-                case 'อยู่ระหว่างสั่งซื้อ': return 'bg-blue-100 text-blue-700 border-blue-200';
-                case 'รอรับของ': return 'bg-pink-100 text-pink-700 border-pink-200';
-                case 'รับแล้ว': return 'bg-teal-100 text-teal-700 border-teal-200';
+                case 'อยู่ระหว่างผลิต': return 'bg-purple-50 text-purple-700 border-purple-200';
+                case 'อยู่ระหว่างสั่งซื้อ': return 'bg-blue-50 text-blue-700 border-blue-200';
+                case 'รอรับของ': return 'bg-pink-50 text-pink-700 border-pink-200';
+                case 'รับแล้ว': return 'bg-teal-50 text-teal-700 border-teal-200';
                 default: return 'bg-gray-50 text-gray-600 border-gray-200';
             }
         };
@@ -3295,6 +3296,9 @@
                      <>
                          <button onClick={() => setIsSummaryOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition active:scale-95" title="สรุปยอด"><Icon name="chart-pie-slice" weight="fill" size={20}/></button>
                          <button onClick={() => setIsScannerOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white text-gray-600 card-shadow border border-gray-100 hover:bg-gray-50 transition active:scale-95" title="สแกน QR"><Icon name="qr-code" weight="bold" size={20}/></button>
+                         <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white text-gray-600 card-shadow border border-gray-100 hover:bg-gray-50 transition active:scale-95" title="เรียงลำดับ">
+                             <Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20}/>
+                         </button>
                      </>
                  )}
                  {subTab === 'products' && (
@@ -3307,7 +3311,7 @@
                  
                  {/* --- PRODUCTS TAB --- */}
                   {subTab === 'products' && (
-                    <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in">
                         {filteredProducts.map((p) => (
                             <div key={p.id} className="group bg-white p-3 rounded-2xl card-shadow border border-gray-100 hover:border-blue-200 transition relative overflow-hidden">
                                 <div className="aspect-square bg-gray-50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
@@ -3325,112 +3329,138 @@
                                 </div>
                             </div>
                         ))}
-                        {filteredProducts.length === 0 && (<div className="col-span-2 flex flex-col items-center justify-center py-16 text-gray-300"><Icon name="t-shirt" size={40} className="opacity-30 mb-2"/><p>ไม่พบสินค้า</p></div>)}
+                        {filteredProducts.length === 0 && (<div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-300"><Icon name="t-shirt" size={40} className="opacity-30 mb-2"/><p>ไม่พบสินค้า</p></div>)}
                     </div>
                   )}
 
-                 {/* --- ORDERS TAB --- */}
+                 {/* --- ORDERS TAB (GROUPED BY STUDENT) --- */}
                  {subTab === 'orders' && (
-                   <div className="space-y-3 animate-fade-in">
+                   <div className="space-y-4 animate-fade-in">
                        
                        {/* Bulk Actions Bar */}
                        {filteredOrders.length > 0 && (
                             <div className="bg-gray-50 p-2 rounded-xl flex gap-2 border border-gray-100">
-                                 <button onClick={() => setIsBulkStatusOpen(true)} className="flex-1 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-200 transition flex items-center justify-center gap-1 border border-indigo-200">
+                                 <button onClick={() => setIsBulkStatusOpen(true)} className="flex-1 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-200 transition flex items-center justify-center gap-1 border border-indigo-200 shadow-sm">
                                      <Icon name="arrows-clockwise" weight="bold"/> เปลี่ยนสถานะ ({filteredOrders.length})
                                  </button>
-                                 <button onClick={confirmBulkDelete} className="flex-1 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition flex items-center justify-center gap-1 border border-red-200">
+                                 <button onClick={confirmBulkDelete} className="flex-1 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition flex items-center justify-center gap-1 border border-red-200 shadow-sm">
                                      <Icon name="trash" weight="bold"/> ลบทั้งหมด ({filteredOrders.length})
                                  </button>
                             </div>
                        )}
 
-                       {filteredOrders.length === 0 && (
+                       {groupedOrders.length === 0 && (
                            <div className="flex flex-col items-center justify-center py-16 text-gray-300"><Icon name="shopping-bag" size={40} className="opacity-30 mb-2"/><p>{searchTerm ? "ไม่พบออเดอร์ที่ค้นหา" : "ไม่มีรายการสั่งซื้อ"}</p></div>
                        )}
                        
-                       {filteredOrders.map((o) => { 
-                           const studentName = students?.find(s => String(s.id) === String(o.studentId))?.name || 'ไม่พบชื่อ';
-                           const statusStyle = getOrderStatusStyle(o.status);
-                           const parsedItems = parseOrderItems(o.items);
-                           
-                           return (
-                              <div key={o.orderId} className="bg-white rounded-2xl card-shadow border border-gray-100 overflow-hidden hover:shadow-md transition group">
-                                  <div className="bg-gray-50 px-4 py-2.5 flex justify-between items-center border-b border-gray-100">
-                                      <div className="flex items-center gap-2 text-xs text-gray-500 font-mono"><Icon name="hash" size={12} weight="bold"/> {o.orderId}</div>
-                                      <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400"><Icon name="clock" weight="fill"/> {formatDateSafe(o.date)}</div>
-                                  </div>
+                       {/* ✅ แสดงออเดอร์เป็น Group ตามนักศึกษา */}
+                       {groupedOrders.map((group) => (
+                           <div key={group.studentId} className="bg-white rounded-3xl card-shadow border border-gray-100 overflow-hidden transition-all hover:shadow-lg">
+                               
+                               {/* Student Header */}
+                               <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border-b border-gray-100 flex justify-between items-center relative overflow-hidden">
+                                   <div className="flex items-center gap-3 relative z-10">
+                                       <div className="w-12 h-12 rounded-2xl bg-white text-blue-600 flex items-center justify-center text-lg font-black shadow-sm border border-blue-100 flex-shrink-0">
+                                           {group.studentName.charAt(0)}
+                                       </div>
+                                       <div>
+                                           <h3 className="font-extrabold text-gray-800 text-base">{group.studentName}</h3>
+                                           <div className="flex items-center gap-2 mt-0.5">
+                                               <span className="text-xs text-gray-500 font-mono tracking-wider flex items-center gap-1"><Icon name="user" weight="bold" size={12}/> {group.studentId}</span>
+                                               <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[10px] font-bold">{group.orders.length} ออเดอร์</span>
+                                           </div>
+                                       </div>
+                                   </div>
+                                   <div className="text-right relative z-10 flex-shrink-0 pl-2">
+                                       <p className="text-[10px] text-blue-500 font-bold uppercase tracking-wider mb-0.5">ยอดรวมทั้งหมด</p>
+                                       <div className="text-xl md:text-2xl font-black text-blue-700">฿{group.totalPrice.toLocaleString()}</div>
+                                   </div>
+                               </div>
 
-                                  <div className="p-4">
-                                      <div className="flex justify-between items-start mb-3">
-                                          <div className="flex items-center gap-3">
-                                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold shadow-inner">{studentName.charAt(0)}</div>
-                                              <div><h4 className="font-bold text-gray-800 text-sm">{studentName}</h4><p className="text-xs text-gray-400">{o.studentId}</p></div>
-                                          </div>
-                                          {o.slip && (<button onClick={()=>onViewSlip(o.slip)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition" title="ดูสลิป"><Icon name="image" weight="fill" size={16}/></button>)}
-                                      </div>
+                               {/* Orders List within the Student */}
+                               <div className="p-2 space-y-2 bg-gray-50/50">
+                                   {group.orders.map(o => {
+                                       const statusStyle = getOrderStatusStyle(o.status);
+                                       const parsedItems = parseOrderItems(o.items);
+                                       
+                                       return (
+                                           <div key={o.orderId} className="bg-white rounded-[1.25rem] p-4 border border-gray-100 shadow-sm relative hover:border-blue-200 transition-colors group/order">
+                                               
+                                               {/* Order Header: ID & Date & Slip */}
+                                               <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
+                                                   <div className="flex items-center gap-3">
+                                                       <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded-lg flex items-center gap-1 border border-gray-200">
+                                                           <Icon name="hash" weight="bold"/> {o.orderId}
+                                                       </span>
+                                                       <span className="text-[10px] font-medium text-gray-400 flex items-center gap-1">
+                                                           <Icon name="clock" weight="fill"/> {formatDateSafe(o.date)}
+                                                       </span>
+                                                   </div>
+                                                   {o.slip && (
+                                                       <button onClick={()=>onViewSlip(o.slip)} className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition flex items-center gap-1 border border-indigo-100">
+                                                           <Icon name="image" weight="fill" size={14}/> ดูสลิป
+                                                       </button>
+                                                   )}
+                                               </div>
 
-                                      {/* ✅ กล่องแสดงรายการออเดอร์แบบใหม่ (แยกชื่อ, ตัวเลือก, จำนวน) */}
-                                      <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 mb-3 relative overflow-hidden">
-                                          <div className="absolute top-0 left-0 w-1 h-full bg-gray-300"></div>
-                                          <div className="pl-2 space-y-3">
-                                              {parsedItems.length > 0 ? parsedItems.map((item, i) => (
-                                                  <div key={i} className="flex justify-between items-start gap-2">
-                                                      <div className="flex-1 min-w-0">
-                                                          <div className="text-xs font-bold text-gray-800 leading-tight">{item.name}</div>
-                                                          {/* ถ้ามีตัวเลือก (Options) ให้แสดงเป็น Tag */}
-                                                          {item.options.length > 0 && (
-                                                              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                                                  {item.options.map((opt, j) => {
-                                                                      // ลองแยกด้วย : เพื่อทำสีตัวหนาตรงหัวข้อ
-                                                                      const parts = opt.split(':');
-                                                                      const key = parts.length > 1 ? parts[0] : null;
-                                                                      const val = parts.length > 1 ? parts.slice(1).join(':') : opt;
-                                                                      
-                                                                      return (
-                                                                          <span key={j} className="inline-flex items-center text-[10px] bg-white border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded-md shadow-sm">
-                                                                              {key ? <><span className="font-bold text-gray-400 mr-1">{key}:</span><span className="text-gray-700 font-medium">{val}</span></> : opt}
-                                                                          </span>
-                                                                      );
-                                                                  })}
-                                                              </div>
-                                                          )}
-                                                      </div>
-                                                      {/* กล่องจำนวน */}
-                                                      <div className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg flex-shrink-0 border border-indigo-100">
-                                                          x{item.qty}
-                                                      </div>
-                                                  </div>
-                                              )) : (
-                                                  <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium">{o.items}</p>
-                                              )}
-                                          </div>
-                                      </div>
+                                               {/* ✅ กล่องแสดงรายการออเดอร์แบบใหม่ (แยกชื่อ, ตัวเลือก, จำนวน) */}
+                                               <div className="space-y-3 mb-4">
+                                                   {parsedItems.length > 0 ? parsedItems.map((item, i) => (
+                                                       <div key={i} className="flex justify-between items-start gap-3">
+                                                           <div className="flex-1 min-w-0">
+                                                               <div className="text-sm font-bold text-gray-800 leading-snug">{item.name}</div>
+                                                               {/* ถ้ามีตัวเลือก (Options) ให้แสดงเป็น Tag */}
+                                                               {item.options.length > 0 && (
+                                                                   <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                                       {item.options.map((opt, j) => {
+                                                                           const parts = opt.split(':');
+                                                                           const key = parts.length > 1 ? parts[0] : null;
+                                                                           const val = parts.length > 1 ? parts.slice(1).join(':') : opt;
+                                                                           return (
+                                                                               <span key={j} className="inline-flex items-center text-[10px] bg-white border border-gray-200 text-gray-500 px-2 py-0.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                                                                                   {key ? <><span className="font-bold text-gray-400 mr-1">{key}:</span><span className="text-gray-700 font-bold">{val}</span></> : opt}
+                                                                               </span>
+                                                                           );
+                                                                       })}
+                                                                   </div>
+                                                               )}
+                                                           </div>
+                                                           {/* กล่องจำนวน */}
+                                                           <div className="text-xs font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg flex-shrink-0 border border-indigo-100 shadow-sm">
+                                                               x{item.qty}
+                                                           </div>
+                                                       </div>
+                                                   )) : (
+                                                       <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-medium">{o.items}</p>
+                                                   )}
+                                               </div>
 
-                                      <div className="flex justify-between items-end">
-                                          <div><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">ยอดรวม</p><div className="text-xl font-extrabold text-gray-800">฿{Number(o.price).toLocaleString()}</div></div>
-                                          
-                                          <div className="flex items-center gap-2">
-                                              <div className="relative group/status">
-                                                  <select value={o.status} onChange={(e)=>onUpdateStatus(o.orderId, e.target.value)} className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-[10px] font-bold border outline-none cursor-pointer transition-colors ${statusStyle}`}>
-                                                      <option value="รอตรวจสอบ">รอตรวจสอบ</option>
-                                                      <option value="ชำระแล้ว">ชำระแล้ว</option>
-                                                      <option value="อยู่ระหว่างสั่งซื้อ">อยู่ระหว่างสั่งซื้อ</option>
-                                                      <option value="อยู่ระหว่างผลิต">อยู่ระหว่างผลิต</option>
-                                                      <option value="รอรับของ">รอรับของ</option>
-                                                      <option value="รับแล้ว">รับแล้ว</option>
-                                                      <option value="ยกเลิก">ยกเลิก</option>
-                                                  </select>
-                                                  <Icon name="caret-down" size={10} weight="bold" className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"/>
-                                              </div>
-                                              <button onClick={() => openEditOrderModal(o)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Icon name="pencil-simple" weight="bold" size={16}/></button>
-                                              <button onClick={()=>onDeleteOrder(o.orderId)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition"><Icon name="trash" weight="bold" size={16}/></button>
-                                          </div>
-                                      </div>
-                                  </div>
-                              </div>
-                           ); 
-                       })}
+                                               {/* Footer: Price & Actions */}
+                                               <div className="flex justify-between items-end pt-3 border-t border-gray-50">
+                                                   <div className="text-lg font-extrabold text-gray-800">฿{Number(o.price).toLocaleString()}</div>
+                                                   <div className="flex items-center gap-2">
+                                                       <div className="relative">
+                                                           <select value={o.status} onChange={(e)=>onUpdateStatus(o.orderId, e.target.value)} className={`appearance-none pl-3 pr-8 py-1.5 rounded-xl text-[11px] font-bold border outline-none cursor-pointer transition-colors shadow-sm ${statusStyle}`}>
+                                                               <option value="รอตรวจสอบ">รอตรวจสอบ</option>
+                                                               <option value="ชำระแล้ว">ชำระแล้ว</option>
+                                                               <option value="อยู่ระหว่างสั่งซื้อ">อยู่ระหว่างสั่งซื้อ</option>
+                                                               <option value="อยู่ระหว่างผลิต">อยู่ระหว่างผลิต</option>
+                                                               <option value="รอรับของ">รอรับของ</option>
+                                                               <option value="รับแล้ว">รับแล้ว</option>
+                                                               <option value="ยกเลิก">ยกเลิก</option>
+                                                           </select>
+                                                           <Icon name="caret-down" size={10} weight="bold" className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"/>
+                                                       </div>
+                                                       <button onClick={() => openEditOrderModal(o)} className="w-8 h-8 rounded-xl bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition border border-gray-100 shadow-sm"><Icon name="pencil-simple" weight="bold" size={16}/></button>
+                                                       <button onClick={()=>onDeleteOrder(o.orderId)} className="w-8 h-8 rounded-xl bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition border border-gray-100 shadow-sm"><Icon name="trash" weight="bold" size={16}/></button>
+                                                   </div>
+                                               </div>
+                                           </div>
+                                       );
+                                   })}
+                               </div>
+                           </div>
+                       ))}
                    </div>
                  )}
              </div>
@@ -4116,6 +4146,11 @@
       const finishAction = () => {
           setProcessingAction(null);
           setShowSuccess(true);
+          
+          // ✅ สั่งให้ดึงข้อมูลใหม่สุดจาก Google Sheets ทันที
+          fetchData(false);
+          fetchOrderData();
+          
           setTimeout(() => setShowSuccess(false), 1500);
       };
 
@@ -4196,9 +4231,16 @@
       };
 
       const handleUpdateOrderStatus = (id, status) => { 
+          // อัปเดตหน้าจอทันทีให้ดูไว
           setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) }));
-          setShowSuccess(true); setTimeout(() => setShowSuccess(false), 1500);
-          apiCall('updateOrderStatus', id, status).catch((err) => alert('Error: ' + err.message)); 
+          
+          // ส่งข้อมูลไปอัปเดตหลังบ้าน
+          apiCall('updateOrderStatus', id, status)
+              .then(() => fetchOrderData()) // ✅ เมื่อหลังบ้านอัปเดตเสร็จ ให้ดึงข้อมูลที่สดใหม่ที่สุดมาแสดง
+              .catch((err) => {
+                  alert('Error: ' + err.message);
+                  fetchOrderData(); // ถ้าระบบพัง ให้ดึงค่าเดิมกลับมา
+              }); 
       };
       
       const handleEditOrder = (formData) => {
@@ -4213,8 +4255,10 @@
           if (!deleteTarget) return; 
           setProcessingAction('DELETE'); 
           setIsDeleteConfirmOpen(false); 
-          const targetId = deleteTarget.id; const targetType = deleteTarget.type;
+          const targetId = deleteTarget.id; 
+          const targetType = deleteTarget.type;
           
+          // อัปเดตหน้าจอชั่วคราว
           if (targetType === 'ORDER') setOrderData(prev => ({ ...prev, orders: prev.orders.filter(o => o.orderId !== targetId) }));
           else if (targetType === 'PRODUCT') setOrderData(prev => ({ ...prev, products: prev.products.filter(p => p.id !== targetId) }));
           else if (targetType === 'BILL') { setData(prev => ({ ...prev, bills: prev.bills.filter(b => b.billId !== targetId) })); setSelectedBill(null); }
@@ -4222,17 +4266,18 @@
           else if (targetType === 'STUDENT') setData(prev => ({ ...prev, students: prev.students.filter(s => s.id !== targetId) }));
           else if (targetType === 'QR') setData(prev => ({ ...prev, amount: { ...prev.amount, qrCodes: prev.amount.qrCodes.filter(q => q.url !== targetId) } }));
           
-          setTimeout(() => {
-              finishAction();
-              const onError = (err) => { alert('Error: ' + err.message); };
-              if (targetType === 'BILL') apiCall('deleteBill', targetId).catch(onError); 
-              else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).catch(onError); 
-              else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).catch(onError); 
-              else if (targetType === 'QR') apiCall('deleteQrCode', targetId).catch(onError); 
-              else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).catch(onError);
-              else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).catch(onError);
-              setDeleteTarget(null);
-          }, 500);
+          const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
+          const onSuccess = () => finishAction(); // ✅ เรียก finishAction เพื่อโหลดข้อมูลใหม่ เมื่อหลังบ้านลบเสร็จแล้วเท่านั้น
+
+          // ส่งคำสั่งลบไปหลังบ้าน และรอจนกว่าจะเสร็จ
+          if (targetType === 'BILL') apiCall('deleteBill', targetId).then(onSuccess).catch(onError); 
+          else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).then(onSuccess).catch(onError); 
+          else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).then(onSuccess).catch(onError); 
+          else if (targetType === 'QR') apiCall('deleteQrCode', targetId).then(onSuccess).catch(onError); 
+          else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).then(onSuccess).catch(onError);
+          else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).then(onSuccess).catch(onError);
+          
+          setDeleteTarget(null);
       };
 
       const handleCreateBill = (formData) => { 
