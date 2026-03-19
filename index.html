@@ -4221,28 +4221,22 @@
           return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
       }
 
-      return (
-        <div className="min-h-screen bg-background text-gray-800 font-sans">
+return (
+        <div className="min-h-screen bg-background text-gray-800 font-sans flex flex-col md:flex-row">
           
           {showSuccess && <SuccessScreen />}
           {processingAction && <LoadingOverlay />}
 
-          <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center"><div className="flex items-center gap-2"><div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div><h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1></div><button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100"><Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" /></button></header>
-          <main className="p-4 max-w-3xl mx-auto">
-            {loading && !data.students?.length ? <Spinner /> : (
-              <>
-                {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction}/>}
-                {activeTab === 'pending' && <PendingView data={data} setSelectedBill={setSelectedBill} />}
-                {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
-                {activeTab === 'history' && <HistoryView data={data} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
-                {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
-                {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
-                {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
-                {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
-              </>
-            )}
-          </main>
-          <nav className="fixed bottom-5 left-4 right-4 max-w-lg mx-auto bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl shadow-blue-900/10 px-2 py-3 flex justify-between items-center z-40 animate-slide-up-fade">
+          {/* --- NEW DESIGN: Navigation Menu --- */}
+          {/* Mobile: Bottom Dock | Desktop: Left Sidebar */}
+          <nav className="fixed bottom-5 left-4 right-4 md:sticky md:bottom-auto md:left-auto md:right-auto md:top-0 md:h-screen md:w-24 lg:w-64 bg-white/90 md:bg-white backdrop-blur-xl md:backdrop-blur-none border border-white/40 md:border-r md:border-gray-200 rounded-3xl md:rounded-none shadow-2xl shadow-blue-900/10 md:shadow-none px-2 py-3 md:py-8 flex md:flex-col justify-between md:justify-start items-center md:items-stretch gap-2 z-40 animate-slide-up-fade md:animate-none">
+            
+            {/* Desktop Logo (Hidden on Mobile) */}
+            <div className="hidden md:flex items-center justify-center lg:justify-start gap-3 px-2 lg:px-6 mb-8">
+              <div className="bg-primary p-2.5 rounded-xl text-white shadow-md shadow-blue-200"><Icon name="graduation-cap" weight="fill" size={24}/></div>
+              <h1 className="text-xl font-bold text-gray-800 hidden lg:block">Admin <span className="text-primary">CHOKUN</span></h1>
+            </div>
+
             {[ 
               { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
               { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: data.bills?.filter(b => b.status === 'รอตรวจสอบ').length || 0 }, 
@@ -4262,19 +4256,23 @@
                     if(tab.id==='notifications') setNotificationSubTab('general'); 
                     if(tab.id==='bills') setBillFilter('all'); 
                   }} 
-                  className={`relative group flex flex-col items-center justify-center transition-all duration-300 ${isActive ? '-translate-y-3' : 'hover:-translate-y-1'}`}
+                  className={`relative group flex md:flex-row flex-col items-center md:justify-start justify-center md:px-3 lg:px-4 py-2.5 rounded-2xl transition-all duration-300 ${isActive ? '-translate-y-3 md:translate-y-0 md:bg-blue-50' : 'hover:-translate-y-1 md:hover:-translate-y-0 md:hover:bg-gray-50'}`}
                 >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
-                    <Icon name={tab.icon} size={20} weight={isActive ? 'fill' : 'bold'} />
+                  <div className={`w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm md:shadow-none ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 md:bg-none text-white md:text-blue-600 shadow-lg shadow-blue-300 scale-110 md:scale-100' : 'bg-transparent text-gray-400 hover:bg-blue-50 md:hover:bg-transparent hover:text-blue-500'}`}>
+                    <Icon name={tab.icon} size={22} weight={isActive ? 'fill' : 'bold'} />
                   </div>
-                  <span className={`absolute -bottom-5 text-[9px] font-bold whitespace-nowrap transition-all duration-300 ${isActive ? 'text-blue-600 opacity-100 translate-y-0' : 'text-gray-400 opacity-0 -translate-y-2 pointer-events-none'}`}>
+                  <span className={`absolute -bottom-5 md:static md:ml-3 text-[9px] md:text-sm font-bold whitespace-nowrap transition-all duration-300 ${isActive ? 'text-blue-600 opacity-100 translate-y-0' : 'text-gray-400 opacity-0 md:opacity-100 -translate-y-2 md:translate-y-0 pointer-events-none md:pointer-events-auto hidden lg:block md:hidden sm:block'}`}>
                     {tab.label}
                   </span>
-                  {isActive && <div className="absolute -bottom-2 w-1 h-1 bg-blue-600 rounded-full"></div>}
+                  
+                  {/* Mobile Active Indicator */}
+                  {isActive && <div className="absolute -bottom-2 md:hidden w-1 h-1 bg-blue-600 rounded-full"></div>}
+                  
+                  {/* Notification Badge */}
                   {tab.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="absolute -top-1 -right-1 md:top-1/2 md:-translate-y-1/2 md:right-3 flex h-4 w-4 md:w-auto md:h-auto md:px-1.5 md:py-0.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[9px] font-bold items-center justify-center border border-white">
+                      <span className="relative inline-flex rounded-full h-4 w-4 md:w-auto md:h-auto md:min-w-[1.25rem] bg-red-500 text-white text-[9px] md:text-xs font-bold items-center justify-center border border-white md:border-none md:rounded-md">
                         {tab.badge > 9 ? '9+' : tab.badge}
                       </span>
                     </span>
@@ -4283,6 +4281,40 @@
               );
             })}
           </nav>
+
+          {/* Main Content Area (Next to Sidebar on Desktop) */}
+          <div className="flex-1 flex flex-col h-screen overflow-y-auto">
+            {/* Mobile Header (Hidden on Desktop) */}
+            <header className="md:hidden bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                    <div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div>
+                    <h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1>
+                </div>
+                <button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100"><Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" /></button>
+            </header>
+
+            {/* Desktop Topbar Refresh Button */}
+            <div className="hidden md:flex justify-end p-4 sticky top-0 z-20 bg-background/80 backdrop-blur-md">
+                 <button onClick={() => fetchData(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-bold shadow-sm hover:text-primary hover:border-blue-200 transition rounded-xl">
+                     <Icon name="arrow-clockwise" size={18} className={loading ? "animate-spin text-primary" : ""} weight="bold" />
+                     รีเฟรชข้อมูล
+                 </button>
+            </div>
+
+            <main className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full transition-all duration-300">
+              {loading && !data.students?.length ? <Spinner /> : (
+              <>
+                {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction}/>}
+                {activeTab === 'pending' && <PendingView data={data} setSelectedBill={setSelectedBill} />}
+                {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
+                {activeTab === 'history' && <HistoryView data={data} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
+                {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
+                {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
+                {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
+                {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
+              </>
+            )}
+          
 
           {/* --- Modal รายละเอียดบิล (Admin Side: Updated with Time) --- */}
           <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={isEditing ? "แก้ไขข้อมูลบิล" : "รายละเอียดบิล"} hideClose={!!processingAction} zIndex="z-[60]">
@@ -4434,6 +4466,7 @@
           <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
+          </div>
         </div>
       );
     };
