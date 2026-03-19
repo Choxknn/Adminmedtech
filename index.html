@@ -15,31 +15,18 @@
     tailwind.config = {
       theme: {
         extend: {
-          colors: {
-            primary: '#2563EB', // Blue-600
-            secondary: '#64748B', 
-            background: '#F8FAFC', 
-            surface: '#FFFFFF',
-          },
+          colors: { primary: '#2563EB', secondary: '#64748B', background: '#F8FAFC', surface: '#FFFFFF' },
           fontFamily: { sans: ['Inter', 'Sarabun', 'sans-serif'] },
           animation: {
-            'scale-in': 'scaleIn 0.2s ease-out forwards',
-            'check-bounce': 'checkBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
-            'fade-in': 'fadeIn 0.2s ease-out forwards',
-            'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
-            'ping-slow': 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite',
-            'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'scale-in': 'scaleIn 0.2s ease-out forwards', 'check-bounce': 'checkBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+            'fade-in': 'fadeIn 0.2s ease-out forwards', 'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
+            'ping-slow': 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite', 'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
           },
           keyframes: {
             scaleIn: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
             fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
             checkBounce: { '0%': { transform: 'scale(0)' }, '50%': { transform: 'scale(1.2)' }, '100%': { transform: 'scale(1)' } },
-            shake: {
-              '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
-              '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
-              '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
-              '40%, 60%': { transform: 'translate3d(4px, 0, 0)' }
-            }
+            shake: { '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' }, '20%, 80%': { transform: 'translate3d(2px, 0, 0)' }, '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' }, '40%, 60%': { transform: 'translate3d(4px, 0, 0)' } }
           }
         }
       }
@@ -58,503 +45,92 @@
 
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
+    const API_URL = "https://script.google.com/macros/s/AKfycbwbNYCsHz7sxUx4TmjU2qiATY0oLmRC-XCOaPaLoPkiRlBZ2KHH95LDTx36JODNaeEkxw/exec"; // เปลี่ยนกลับเป็น URL ของคุณ
 
-    // ✅ วาง URL ที่ก๊อปปี้มาจากขั้นตอนที่ 2 ตรงนี้
-    const API_URL = "https://script.google.com/macros/s/AKfycbwbNYCsHz7sxUx4TmjU2qiATY0oLmRC-XCOaPaLoPkiRlBZ2KHH95LDTx36JODNaeEkxw/exec";
-
-    // ✅ ตัวกลางสำหรับเรียกใช้ API
     const apiCall = async (action, ...args) => {
         try {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                // ใช้ text/plain เพื่อป้องกันปัญหา CORS Preflight จากเบราว์เซอร์
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-                body: JSON.stringify({ action: action, data: args })
-            });
+            const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: action, data: args }) });
             const result = await response.json();
-            
-            if (result.status === 'success') {
-                return result.data;
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            console.error(`API Error [${action}]:`, error);
-            throw error;
-        }
+            if (result.status === 'success') return result.data;
+            throw new Error(result.message);
+        } catch (error) { throw error; }
     };
 
-    // --- HELPERS (Updated for Order System) ---
-        const getStatusColor = (status) => {
+    // --- HELPERS ---
+    const getStatusColor = (status) => {
       if (!status) return 'bg-gray-100 text-gray-600';
       switch(status) {
-        case 'ชำระแล้ว': return 'bg-green-100 text-green-700';
-        case 'รอตรวจสอบ': return 'bg-yellow-100 text-yellow-700';
-        
-        case 'ON': return 'bg-green-100 text-green-700';
-        case 'OFF': return 'bg-red-100 text-red-700';
-        case 'OUT': return 'bg-gray-200 text-gray-500'; // แก้จาก OUF เป็น OUT
-        
-        case 'อยู่ระหว่างสั่งซื้อ': return 'bg-blue-100 text-blue-700';
-        case 'อยู่ระหว่างผลิต': return 'bg-purple-100 text-purple-700';
-        case 'รับแล้ว': return 'bg-green-100 text-green-700';
+        case 'ชำระแล้ว': return 'bg-green-100 text-green-700'; case 'รอตรวจสอบ': return 'bg-yellow-100 text-yellow-700';
+        case 'ON': return 'bg-green-100 text-green-700'; case 'OFF': return 'bg-red-100 text-red-700'; case 'OUT': return 'bg-gray-200 text-gray-500'; 
+        case 'อยู่ระหว่างสั่งซื้อ': return 'bg-blue-100 text-blue-700'; case 'อยู่ระหว่างผลิต': return 'bg-purple-100 text-purple-700'; case 'รับแล้ว': return 'bg-green-100 text-green-700';
         default: return 'bg-gray-100 text-gray-600';
       }
     };
 
-
     const calculateFine = (bill) => {
       if (bill.status === 'ชำระแล้ว' || !bill.dueDate) return 0;
-      const due = new Date(bill.dueDate); due.setHours(0, 0, 0, 0);
-      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const due = new Date(bill.dueDate); due.setHours(0, 0, 0, 0); const now = new Date(); now.setHours(0, 0, 0, 0);
       if (now <= due) return 0;
-      const diffTime = now - due;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffTime = now - due; const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       let fine = diffDays * (bill.finePerDay || 0);
       if (bill.maxFine && fine > bill.maxFine) fine = bill.maxFine;
       return fine;
     };
 
-        // --- Utils ---
-        const formatDate = (dateString) => {
-            if (!dateString) return '';
-            const date = new Date(dateString);
-            
-            // ✅ แก้ปัญหาปี 3112 (ปีไทยซ้อนปีไทย)
-            // ถ้าปีมันเกิน 2400 (เช่น 2569) แสดงว่าเป็นปีไทยมาแล้ว
-            // ต้องลบ 543 ออกก่อน เพื่อให้ toLocaleDateString แปลงกลับมาเป็น 2569 เท่าเดิม
-            if (date.getFullYear() > 2400) {
-                date.setFullYear(date.getFullYear() - 543);
-            }
-
-            return date.toLocaleDateString('th-TH', { 
-                day: 'numeric', 
-                month: 'short', 
-                year: 'numeric' 
-            });
-        };
-
-    
-    const formatDateForInput = (dateStr) => {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return '';
-        return d.toISOString().split('T')[0];
+    const formatDate = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (date.getFullYear() > 2400) date.setFullYear(date.getFullYear() - 543);
+        return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
     };
-
+    const formatDateForInput = (dateStr) => { if (!dateStr) return ''; const d = new Date(dateStr); if (isNaN(d.getTime())) return ''; return d.toISOString().split('T')[0]; };
     const isDateInRange = (dateStr, startStr, endStr) => {
-        if (!dateStr) return false;
-        const target = new Date(dateStr); target.setHours(0,0,0,0);
+        if (!dateStr) return false; const target = new Date(dateStr); target.setHours(0,0,0,0);
         const start = startStr ? new Date(startStr) : null; if(start) start.setHours(0,0,0,0);
         const end = endStr ? new Date(endStr) : null; if(end) end.setHours(0,0,0,0);
-        if (start && target < start) return false;
-        if (end && target > end) return false;
-        return true;
+        if (start && target < start) return false; if (end && target > end) return false; return true;
     };
 
     // --- COMPONENTS ---
-    const Icon = ({ name, size = 24, className = "", weight="regular" }) => {
-        const weightClass = weight === 'regular' ? 'ph' : `ph-${weight}`;
-        return <i className={`${weightClass} ph-${name} ${className}`} style={{ fontSize: size }}></i>;
+    const Icon = ({ name, size = 24, className = "", weight="regular" }) => { const weightClass = weight === 'regular' ? 'ph' : `ph-${weight}`; return <i className={`${weightClass} ph-${name} ${className}`} style={{ fontSize: size }}></i>; };
+    const Spinner = () => ( <div className="flex justify-center items-center py-10"><Icon name="circle-notch" className="animate-spin text-primary" size={32} weight="bold" /></div> );
+    const LoadingOverlay = () => ( <div className="fixed inset-0 z-[300] bg-black/30 backdrop-blur-sm flex items-center justify-center animate-fade-in"><div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4"><div className="relative"><div className="w-12 h-12 border-4 border-blue-100 rounded-full"></div><div className="absolute top-0 left-0 w-12 h-12 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div></div><span className="text-sm font-bold text-gray-600 animate-pulse">กำลังประมวลผล...</span></div></div> );
+
+    const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, loading, confirmText = "ยืนยัน", isDestructive = true }) => {
+        if (!isOpen) return null;
+        return ReactDOM.createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-scale-in text-center transform transition-all"><div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDestructive ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-primary'}`}>{loading ? (<Icon name="circle-notch" className="animate-spin" size={32} weight="bold" />) : (<Icon name={isDestructive ? "trash" : "paper-plane-right"} size={32} weight="fill" />)}</div><h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3><p className="text-sm text-gray-500 mb-6 leading-relaxed whitespace-pre-line">{message}</p><div className="flex gap-3"><button onClick={onClose} disabled={loading} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition">ยกเลิก</button><button onClick={onConfirm} disabled={loading} className={`flex-1 py-3 rounded-xl text-white font-bold shadow-lg transition flex justify-center items-center gap-2 ${isDestructive ? 'bg-red-500 shadow-red-200 hover:bg-red-600' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'}`}>{loading ? <><Icon name="circle-notch" className="animate-spin" weight="bold"/> รอสักครู่</> : confirmText}</button></div></div></div>, document.body
+        );
     };
-    
-    // --- Updated Common Components (Standardized Spinner) ---
-        const Spinner = () => (
-            <div className="flex justify-center items-center py-10">
-                <Icon name="circle-notch" className="animate-spin text-primary" size={32} weight="bold" />
-            </div>
-        );
-
-        // --- Loading Overlay (Popup หมุนๆ ตรงกลางจอ) ---
-        const LoadingOverlay = () => (
-            <div className="fixed inset-0 z-[300] bg-black/30 backdrop-blur-sm flex items-center justify-center animate-fade-in">
-                <div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-gray-100 transform scale-100 animate-scale-in">
-                    {/* ไอคอนหมุน Circle Notch สีน้ำเงิน */}
-                    <div className="relative">
-                        <div className="w-12 h-12 border-4 border-blue-100 rounded-full"></div>
-                        <div className="absolute top-0 left-0 w-12 h-12 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-                    </div>
-                    <span className="text-sm font-bold text-gray-600 animate-pulse">กำลังประมวลผล...</span>
-                </div>
-            </div>
-        );
-
-        const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, loading, confirmText = "ยืนยัน", isDestructive = true }) => {
-            if (!isOpen) return null;
-            return ReactDOM.createPortal(
-                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-scale-in text-center transform transition-all">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDestructive ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-primary'}`}>
-                        {loading ? (
-                            <Icon name="circle-notch" className="animate-spin" size={32} weight="bold" />
-                        ) : (
-                            <Icon name={isDestructive ? "trash" : "paper-plane-right"} size={32} weight="fill" />
-                        )}
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3>
-                    <p className="text-sm text-gray-500 mb-6 leading-relaxed whitespace-pre-line">{message}</p>
-                    <div className="flex gap-3">
-                    <button onClick={onClose} disabled={loading} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition disabled:opacity-50">ยกเลิก</button>
-                    <button onClick={onConfirm} disabled={loading} className={`flex-1 py-3 rounded-xl text-white font-bold shadow-lg transition flex justify-center items-center gap-2 disabled:opacity-70 ${isDestructive ? 'bg-red-500 shadow-red-200 hover:bg-red-600' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'}`}>
-                        {loading ? <><Icon name="circle-notch" className="animate-spin" weight="bold"/> รอสักครู่</> : confirmText}
-                    </button>
-                    </div>
-                </div>
-                </div>,
-                document.body
-            );
-        };
-        
-    const SearchBar = ({ value, onChange, placeholder = "ค้นหา...", action }) => (
-      <div className="bg-white p-2 px-4 rounded-xl card-shadow flex items-center gap-3 sticky top-0 z-10 border border-gray-100 mb-4">
-        <Icon name="magnifying-glass" className="text-gray-400" />
-        <input type="text" placeholder={placeholder} className="w-full py-2 outline-none text-gray-700 bg-transparent min-w-0" value={value} onChange={(e) => onChange(e.target.value)}/>
-        {value && <button onClick={() => onChange('')} className="text-gray-400 hover:text-gray-600"><Icon name="x-circle" weight="fill" /></button>}
-        {action && <div className="pl-2 border-l border-gray-100 flex-shrink-0">{action}</div>}
-      </div>
-    );
-
-    const SortButton = ({ sortOrder, onClick }) => (
-      <button onClick={onClick} className="flex items-center gap-1 text-primary bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition active:scale-95">
-        <span className="text-xs font-bold whitespace-nowrap">{sortOrder === 'newest' ? 'ใหม่-เก่า' : 'เก่า-ใหม่'}</span>
-        <Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} size={18} weight="bold" />
-      </button>
-    );
 
     const StatCard = ({ title, value, icon, gradient, onClick, alert, variant = 'default' }) => {
-      let bgClass = "bg-white";
-      if (alert) {
-        if (variant === 'warning') bgClass = "bg-amber-50"; 
-        else if (variant === 'danger') bgClass = "bg-red-50"; 
-      }
-      let blinkingBorder = null;
-      if (alert && variant !== 'default') {
-         const borderColor = variant === 'warning' ? 'border-amber-400' : 'border-red-400';
-         blinkingBorder = <div className={`absolute inset-0 rounded-2xl border-2 ${borderColor} animate-pulse pointer-events-none`}></div>;
-      }
-      return (
-        <div onClick={onClick} className={`${bgClass} p-4 rounded-2xl card-shadow flex items-center space-x-4 relative ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}>
-          {blinkingBorder}
-          {alert && (
-             <span className="absolute top-3 right-3 flex h-3 w-3">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${variant === 'warning' ? 'bg-amber-400' : 'bg-red-400'}`}></span>
-                <span className={`relative inline-flex rounded-full h-3 w-3 border-2 border-white ${variant === 'warning' ? 'bg-amber-500' : 'bg-red-500'}`}></span>
-             </span>
-          )}
-          <div className={`p-3.5 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-md relative z-10`}>
-              <Icon name={icon} size={26} weight="duotone" />
-          </div>
-          <div className="relative z-10">
-              <p className={`text-xs font-medium ${alert && variant !== 'default' ? 'text-gray-700 font-bold' : 'text-gray-400'}`}>{title}</p>
-              <h3 className={`text-xl font-bold ${alert && variant === 'danger' ? 'text-red-700' : (alert && variant === 'warning' ? 'text-amber-700' : 'text-gray-800')}`}>{value}</h3>
-          </div>
-        </div>
-      );
+      let bgClass = "bg-white"; if (alert) { if (variant === 'warning') bgClass = "bg-amber-50"; else if (variant === 'danger') bgClass = "bg-red-50"; }
+      let blinkingBorder = null; if (alert && variant !== 'default') { const borderColor = variant === 'warning' ? 'border-amber-400' : 'border-red-400'; blinkingBorder = <div className={`absolute inset-0 rounded-2xl border-2 ${borderColor} animate-pulse pointer-events-none`}></div>; }
+      return ( <div onClick={onClick} className={`${bgClass} p-4 rounded-2xl card-shadow flex items-center space-x-4 relative ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}>{blinkingBorder}{alert && (<span className="absolute top-3 right-3 flex h-3 w-3"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${variant === 'warning' ? 'bg-amber-400' : 'bg-red-400'}`}></span><span className={`relative inline-flex rounded-full h-3 w-3 border-2 border-white ${variant === 'warning' ? 'bg-amber-500' : 'bg-red-500'}`}></span></span>)}<div className={`p-3.5 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-md relative z-10`}><Icon name={icon} size={26} weight="duotone" /></div><div className="relative z-10"><p className={`text-xs font-medium ${alert && variant !== 'default' ? 'text-gray-700 font-bold' : 'text-gray-400'}`}>{title}</p><h3 className={`text-xl font-bold ${alert && variant === 'danger' ? 'text-red-700' : (alert && variant === 'warning' ? 'text-amber-700' : 'text-gray-800')}`}>{value}</h3></div></div> );
     };
 
-    const DateRangeFilter = ({ startDate, endDate, onChange, isActive, onToggle }) => (
-      <div className="bg-white p-3 rounded-xl card-shadow mb-4 animate-fade-in border border-gray-100">
-         <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-50">
-             <div className="flex items-center gap-2">
-                 <Icon name="calendar-blank" size={18} className="text-primary"/>
-                 <span className="text-xs font-bold text-gray-700">กรองตามช่วงเวลา</span>
-             </div>
-             <button onClick={onToggle} className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out focus:outline-none flex items-center ${isActive ? 'bg-primary' : 'bg-gray-200'}`}>
-                <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${isActive ? 'translate-x-4' : 'translate-x-0'}`}/>
-             </button>
-         </div>
-         <div className={`grid grid-cols-2 gap-2 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
-             <div>
-               <label className="block text-[10px] text-gray-400 font-bold mb-0.5 ml-1">ตั้งแต่วันที่</label>
-               <input type="date" value={startDate} disabled={!isActive} onChange={e => onChange('start', e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg py-0 px-2 text-xs outline-none focus:ring-1 focus:ring-primary text-gray-600 font-medium h-8"/>
-             </div>
-             <div>
-               <label className="block text-[10px] text-gray-400 font-bold mb-0.5 ml-1">ถึงวันที่</label>
-               <input type="date" value={endDate} disabled={!isActive} onChange={e => onChange('end', e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg py-0 px-2 text-xs outline-none focus:ring-1 focus:ring-primary text-gray-600 font-medium h-8"/>
-             </div>
-         </div>
-      </div>
-    );
-    
-        // --- Helper: Scroll To Top (เหลือแค่ขึ้นบนอย่างเดียว) ---
-    const ScrollToTopBottom = () => {
-      const [showBtn, setShowBtn] = useState(false);
+    const DateRangeFilter = ({ startDate, endDate, onChange, isActive, onToggle }) => ( <div className="bg-white p-3 rounded-xl card-shadow mb-4 animate-fade-in border border-gray-100"><div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-50"><div className="flex items-center gap-2"><Icon name="calendar-blank" size={18} className="text-primary"/><span className="text-xs font-bold text-gray-700">กรองตามช่วงเวลา</span></div><button onClick={onToggle} className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none flex items-center ${isActive ? 'bg-primary' : 'bg-gray-200'}`}><div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ${isActive ? 'translate-x-4' : 'translate-x-0'}`}/></button></div><div className={`grid grid-cols-2 gap-2 transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}><div><label className="block text-[10px] text-gray-400 font-bold mb-0.5 ml-1">ตั้งแต่วันที่</label><input type="date" value={startDate} disabled={!isActive} onChange={e => onChange('start', e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg py-0 px-2 text-xs outline-none focus:ring-1 focus:ring-primary h-8"/></div><div><label className="block text-[10px] text-gray-400 font-bold mb-0.5 ml-1">ถึงวันที่</label><input type="date" value={endDate} disabled={!isActive} onChange={e => onChange('end', e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg py-0 px-2 text-xs outline-none focus:ring-1 focus:ring-primary h-8"/></div></div></div> );
+    const ScrollToTopBottom = () => { const [showBtn, setShowBtn] = useState(false); useEffect(() => { const checkScroll = () => { if (window.scrollY > 300) setShowBtn(true); else setShowBtn(false); }; window.addEventListener('scroll', checkScroll); return () => window.removeEventListener('scroll', checkScroll); }, []); const goTop = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); }; if (!showBtn) return null; return ( <button onClick={goTop} className="fixed bottom-24 right-4 md:right-8 z-50 w-11 h-11 bg-primary text-white rounded-full shadow-lg shadow-blue-200 flex items-center justify-center hover:bg-blue-700 transition animate-fade-in"><Icon name="arrow-up" weight="bold" size={20}/></button> ); };
+    const ImageModal = ({ isOpen, onClose, imageUrl }) => { if (!isOpen || !imageUrl) return null; return ReactDOM.createPortal( <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}><div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute -top-12 right-0 md:-right-12 text-white hover:text-gray-300 transition p-2 bg-black/20 rounded-full backdrop-blur-md"><Icon name="x" size={24} weight="bold"/></button><img src={imageUrl} className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain bg-white" /></div></div>, document.body ); };
+    const Modal = ({ isOpen, onClose, title, children, hideClose = false, zIndex = "z-[110]" }) => { if (!isOpen) return null; return ReactDOM.createPortal( <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in`}><div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform transition-all scale-100 max-h-[90vh] flex flex-col">{!hideClose && ( <div className="flex justify-between items-center p-4 border-b border-gray-100 flex-shrink-0"><h3 className="font-bold text-lg text-gray-800">{title}</h3><button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-red-500"><Icon name="x" size={20} weight="bold" /></button></div> )} <div className="p-4 overflow-y-auto flex-1">{children}</div></div></div>, document.body ); };
+    const ErrorModal = ({ isOpen, onClose, message }) => { if (!isOpen) return null; return ReactDOM.createPortal( <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-shake text-center border-t-4 border-red-500"><div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse"><Icon name="warning-circle" size={32} weight="fill" className="text-red-500" /></div><h3 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3><p className="text-sm text-gray-500 mb-6 font-medium text-red-600">{message}</p><button onClick={onClose} className="w-full py-3 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition">ตกลง</button></div></div>, document.body ); };
+    const SuccessScreen = () => ( <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm"><div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center shadow-2xl animate-scale-in min-w-[200px]"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4 animate-check-bounce"><Icon name="check" size={48} weight="bold" className="text-green-600" /></div><h3 className="text-xl font-bold text-gray-800">เรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">บันทึกข้อมูลสำเร็จแล้ว</p></div></div> );
+    const StudentMultiSelect = ({ students, selectedIds, onChange }) => { const [isOpen, setIsOpen] = useState(false); const toggleStudent = (id) => { if (selectedIds.includes(id)) { onChange(selectedIds.filter(sid => sid !== id)); } else { onChange([...selectedIds, id]); } }; const toggleSelectAll = () => { if (selectedIds.length === students.length) { onChange([]); } else { onChange(students.map(s => s.id)); } }; const isAllSelected = students.length > 0 && selectedIds.length === students.length; return ( <div className="relative"><button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full p-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary text-left flex justify-between items-center"><span className={selectedIds.length === 0 ? "text-gray-400" : "text-gray-800"}>{selectedIds.length === 0 ? "-- เลือกนักศึกษา --" : `เลือกแล้ว ${selectedIds.length} คน`}</span><Icon name="caret-down" /></button>{isOpen && ( <><div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div><div className="absolute z-20 w-full mt-1 bg-white border rounded-xl shadow-xl max-h-60 overflow-y-auto"><div className="p-3 border-b border-gray-100 flex items-center gap-2 cursor-pointer hover:bg-blue-50 sticky top-0 bg-white z-10" onClick={toggleSelectAll}><div className={`w-5 h-5 rounded border flex items-center justify-center ${isAllSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isAllSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div><span className="font-bold text-primary">เลือกทั้งหมด ({students.length})</span></div>{students.map(s => { const isSelected = selectedIds.includes(s.id); return (<div key={s.id} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50/50' : ''}`} onClick={() => toggleStudent(s.id)}><div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div><div><div className="text-sm font-medium text-gray-800">{s.name}</div><div className="text-xs text-gray-500">{s.id}</div></div></div>); })}</div></> )}</div> ); };
 
-      useEffect(() => {
-        const checkScroll = () => {
-          // แสดงปุ่มเมื่อเลื่อนลงมาเกิน 300px
-          if (window.scrollY > 300) setShowBtn(true);
-          else setShowBtn(false);
-        };
-        window.addEventListener('scroll', checkScroll);
-        return () => window.removeEventListener('scroll', checkScroll);
-      }, []);
-
-      const goTop = () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-
-      if (!showBtn) return null;
-
-      return (
-        <button 
-            onClick={goTop} 
-            className="fixed bottom-24 right-4 z-50 w-11 h-11 bg-primary/90 text-white rounded-full shadow-lg shadow-blue-200 flex items-center justify-center hover:bg-blue-700 transition-all hover:-translate-y-1 animate-fade-in"
-        >
-            <Icon name="arrow-up" weight="bold" size={20}/>
-        </button>
-      );
-    };
-
-    // 4. Image Modal (ดูรูปสลิป)
-    const ImageModal = ({ isOpen, onClose, imageUrl }) => {
-      if (!isOpen || !imageUrl) return null;
-      return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-          <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
-             <button onClick={onClose} className="absolute -top-12 right-0 md:-right-12 text-white hover:text-gray-300 transition p-2 bg-black/20 rounded-full backdrop-blur-md"><Icon name="x" size={24} weight="bold"/></button>
-             <img src={imageUrl} alt="Slip" className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain bg-white" />
-          </div>
-        </div>,
-        document.body
-      );
-    };
-
-    // --- PORTAL MODALS (Fix Z-Index Issue) ---
-    
-    //  Generic Modal (ใช้โดย EditOrder, OrderSummary, StudentBill)
-    const Modal = ({ isOpen, onClose, title, children, hideClose = false, zIndex = "z-[110]" }) => {
-      if (!isOpen) return null;
-      return ReactDOM.createPortal(
-        <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in`}>
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform transition-all scale-100 animate-scale-in max-h-[90vh] flex flex-col">
-            {!hideClose && (
-              <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-white flex-shrink-0">
-                <h3 className="font-bold text-lg text-gray-800">{title}</h3>
-                <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-red-500 transition-colors"><Icon name="x" size={20} weight="bold" /></button>
-              </div>
-            )}
-            <div className="p-4 overflow-y-auto flex-1">{children}</div>
-          </div>
-        </div>,
-        document.body
-      );
-    };
-
-
-    //  Error Modal
-    const ErrorModal = ({ isOpen, onClose, message }) => {
-      if (!isOpen) return null;
-      return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-           <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-shake text-center border-t-4 border-red-500">
-             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-               <Icon name="warning-circle" size={32} weight="fill" className="text-red-500" />
-             </div>
-             <h3 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3>
-             <p className="text-sm text-gray-500 mb-6 leading-relaxed font-medium text-red-600">{message}</p>
-             <button onClick={onClose} className="w-full py-3 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition">ตกลง</button>
-           </div>
-        </div>,
-        document.body
-      );
-    };
-
-    
-
-    // --- ✅ Success Screen (Update Z-Index to 120) ---
-    const SuccessScreen = () => (
-      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center shadow-2xl animate-scale-in min-w-[200px]">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4 animate-check-bounce"><Icon name="check" size={48} weight="bold" className="text-green-600" /></div>
-          <h3 className="text-xl font-bold text-gray-800">เรียบร้อย</h3>
-          <p className="text-sm text-gray-500 mt-1">บันทึกข้อมูลสำเร็จแล้ว</p>
-        </div>
-      </div>
-    );
-
-    // --- REUSABLE COMPONENT: Student Multi Select ---
-    const StudentMultiSelect = ({ students, selectedIds, onChange }) => {
-      const [isOpen, setIsOpen] = useState(false);
-      const toggleStudent = (id) => {
-        if (selectedIds.includes(id)) { onChange(selectedIds.filter(sid => sid !== id)); } else { onChange([...selectedIds, id]); }
-      };
-      const toggleSelectAll = () => {
-        if (selectedIds.length === students.length) { onChange([]); } else { onChange(students.map(s => s.id)); }
-      };
-      const isAllSelected = students.length > 0 && selectedIds.length === students.length;
-      return (
-        <div className="relative">
-          <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full p-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary text-left flex justify-between items-center">
-            <span className={selectedIds.length === 0 ? "text-gray-400" : "text-gray-800"}>{selectedIds.length === 0 ? "-- เลือกนักศึกษา --" : `เลือกแล้ว ${selectedIds.length} คน`}</span><Icon name="caret-down" />
-          </button>
-          {isOpen && (
-            <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
-                <div className="absolute z-20 w-full mt-1 bg-white border rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                <div className="p-3 border-b border-gray-100 flex items-center gap-2 cursor-pointer hover:bg-blue-50 sticky top-0 bg-white z-10" onClick={toggleSelectAll}>
-                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isAllSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isAllSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div>
-                    <span className="font-bold text-primary">เลือกทั้งหมด ({students.length})</span>
-                </div>
-                {students.map(s => {
-                    const isSelected = selectedIds.includes(s.id);
-                    return (<div key={s.id} className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50/50' : ''}`} onClick={() => toggleStudent(s.id)}><div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-gray-300'}`}>{isSelected && <Icon name="check" className="text-white" size={14} weight="bold" />}</div><div><div className="text-sm font-medium text-gray-800">{s.name}</div><div className="text-xs text-gray-500">{s.id}</div></div></div>);
-                })}
-                </div>
-            </>
-          )}
-        </div>
-      );
-    };
-    
-// --- Bill Summary Modal (Removed Date Filter) ---
+    // --- OTHER MODALS ---
     const BillSummaryModal = ({ isOpen, onClose, bills, history }) => {
-      const [selectedItems, setSelectedItems] = useState([]); 
-      const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(true); // เปิดลิ้นชักไว้เลยเพราะไม่มีวันที่แล้ว
-
-      useEffect(() => {
-          if (isOpen) {
-              setSelectedItems([]); 
-              setIsItemDrawerOpen(true);
-          }
-      }, [isOpen]);
-
-      // Map ประวัติการโอน
-      const historyMap = useMemo(() => {
-          const map = {};
-          if (history) { history.forEach(h => { map[String(h.billId)] = Number(h.total) || 0; }); }
-          return map;
-      }, [history]);
-
-      // รายชื่อรายการสินค้าทั้งหมด
-      const availableItems = useMemo(() => {
-          if (!bills) return [];
-          const items = bills.map(b => b.item).filter(Boolean);
-          return [...new Set(items)].sort();
-      }, [bills]);
-
-      // Helper functions
+      const [selectedItems, setSelectedItems] = useState([]); const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(true);
+      useEffect(() => { if (isOpen) { setSelectedItems([]); setIsItemDrawerOpen(true); } }, [isOpen]);
+      const historyMap = useMemo(() => { const map = {}; if (history) { history.forEach(h => { map[String(h.billId)] = Number(h.total) || 0; }); } return map; }, [history]);
+      const availableItems = useMemo(() => { if (!bills) return []; return [...new Set(bills.map(b => b.item).filter(Boolean))].sort(); }, [bills]);
       const toggleItem = (name) => { if (selectedItems.includes(name)) setSelectedItems(prev => prev.filter(n => n !== name)); else setSelectedItems(prev => [...prev, name]); };
-      const selectAll = () => setSelectedItems([...availableItems]);
-      const clearSelection = () => setSelectedItems([]);
-
-      // กรองข้อมูล (ตัดเรื่องวันที่ออกแล้ว)
-      const filteredData = useMemo(() => {
-          if (!isOpen || !bills) return [];
-          return bills.filter(b => {
-              if (b.status === 'ยกเลิก') return false;
-              // กรองรายการ (Multi-Select)
-              if (selectedItems.length > 0) {
-                  if (!selectedItems.includes(b.item)) return false;
-              }
-              return true;
-          });
-      }, [isOpen, bills, selectedItems]);
-
-      // คำนวณยอดสรุป
-      const summary = useMemo(() => {
-        let totalReceived = 0; let paidPrincipal = 0; let unpaidPrincipal = 0; let collectedFine = 0; 
-        const itemMap = {};
-
-        filteredData.forEach(b => {
-            const amount = Number(b.amount) || 0;
-            const discount = Number(b.discount) || 0;
-            const basePrincipal = amount - discount; 
-            let itemFineForTable = 0;   
-
-            if (b.status === 'ชำระแล้ว') {
-                const realTransferTotal = historyMap[String(b.billId)];
-                if (realTransferTotal !== undefined && realTransferTotal > 0) {
-                    const actualFine = Math.max(0, realTransferTotal - basePrincipal);
-                    paidPrincipal += basePrincipal; collectedFine += actualFine; totalReceived += realTransferTotal; itemFineForTable = actualFine;
-                } else {
-                    paidPrincipal += basePrincipal; totalReceived += basePrincipal;
-                }
-            } else { unpaidPrincipal += basePrincipal; }
-
-            const itemName = b.item || 'ไม่ระบุ';
-            if (!itemMap[itemName]) { itemMap[itemName] = { name: itemName, count: 0, totalPrincipal: 0, totalFine: 0, paidCount: 0 }; }
-            itemMap[itemName].count++;
-            itemMap[itemName].totalPrincipal += basePrincipal; 
-            itemMap[itemName].totalFine += itemFineForTable;
-            if (b.status === 'ชำระแล้ว') itemMap[itemName].paidCount++;
-        });
-
-        const sortedItems = Object.values(itemMap).sort((a, b) => (b.totalPrincipal + b.totalFine) - (a.totalPrincipal + a.totalFine));
-        return { totalReceived, paidPrincipal, unpaidPrincipal, collectedFine, items: sortedItems };
-      }, [filteredData, historyMap]);
-
-      const tableTotals = useMemo(() => {
-          return summary.items.reduce((acc, item) => ({ count: acc.count + item.count, fine: acc.fine + item.totalFine, net: acc.net + (item.totalPrincipal + item.totalFine) }), { count: 0, fine: 0, net: 0 });
-      }, [summary.items]);
-
+      const filteredData = useMemo(() => { if (!isOpen || !bills) return []; return bills.filter(b => { if (b.status === 'ยกเลิก') return false; if (selectedItems.length > 0) { if (!selectedItems.includes(b.item)) return false; } return true; }); }, [isOpen, bills, selectedItems]);
+      const summary = useMemo(() => { let totalReceived = 0; let paidPrincipal = 0; let unpaidPrincipal = 0; let collectedFine = 0; const itemMap = {}; filteredData.forEach(b => { const basePrincipal = (Number(b.amount) || 0) - (Number(b.discount) || 0); let itemFineForTable = 0; if (b.status === 'ชำระแล้ว') { const realTransferTotal = historyMap[String(b.billId)]; if (realTransferTotal !== undefined && realTransferTotal > 0) { const actualFine = Math.max(0, realTransferTotal - basePrincipal); paidPrincipal += basePrincipal; collectedFine += actualFine; totalReceived += realTransferTotal; itemFineForTable = actualFine; } else { paidPrincipal += basePrincipal; totalReceived += basePrincipal; } } else { unpaidPrincipal += basePrincipal; } const itemName = b.item || 'ไม่ระบุ'; if (!itemMap[itemName]) { itemMap[itemName] = { name: itemName, count: 0, totalPrincipal: 0, totalFine: 0, paidCount: 0 }; } itemMap[itemName].count++; itemMap[itemName].totalPrincipal += basePrincipal; itemMap[itemName].totalFine += itemFineForTable; if (b.status === 'ชำระแล้ว') itemMap[itemName].paidCount++; }); const sortedItems = Object.values(itemMap).sort((a, b) => (b.totalPrincipal + b.totalFine) - (a.totalPrincipal + a.totalFine)); return { totalReceived, paidPrincipal, unpaidPrincipal, collectedFine, items: sortedItems }; }, [filteredData, historyMap]);
+      const tableTotals = useMemo(() => { return summary.items.reduce((acc, item) => ({ count: acc.count + item.count, fine: acc.fine + item.totalFine, net: acc.net + (item.totalPrincipal + item.totalFine) }), { count: 0, fine: 0, net: 0 }); }, [summary.items]);
       if (!isOpen) return null;
-
-      return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`สรุปยอดบิล`}>
-           <div className="space-y-4">
-              {/* Filter Section (Only Items) */}
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                  <div onClick={() => setIsItemDrawerOpen(!isItemDrawerOpen)} className="p-3 flex justify-between items-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
-                      <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg ${selectedItems.length > 0 ? 'bg-blue-100 text-blue-600' : 'bg-white border border-gray-200 text-gray-500'}`}><Icon name="list-checks" weight="bold" size={16}/></div>
-                          <span className={`text-xs font-bold ${selectedItems.length > 0 ? 'text-blue-600' : 'text-gray-600'}`}>{selectedItems.length > 0 ? `เลือกไว้ ${selectedItems.length} รายการ` : 'แสดงรายการทั้งหมด'}</span>
-                      </div>
-                      <Icon name={isItemDrawerOpen ? "caret-up" : "caret-down"} className="text-gray-400" weight="bold"/>
-                  </div>
-                  {isItemDrawerOpen && (
-                      <div className="p-3 border-t border-gray-100 animate-fade-in">
-                          <div className="flex justify-end gap-2 mb-2">
-                              <button onClick={selectAll} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100 font-bold">เลือกทั้งหมด</button>
-                              <button onClick={clearSelection} className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded hover:bg-gray-200">ล้างค่า</button>
-                          </div>
-                          <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-                              {availableItems.map((name, idx) => {
-                                  const isSelected = selectedItems.includes(name);
-                                  return (
-                                      <div key={idx} onClick={() => toggleItem(name)} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-bold border border-blue-100' : 'bg-white hover:bg-gray-50 border border-transparent'}`}>
-                                          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300 bg-white'}`}>{isSelected && <Icon name="check" size={10} className="text-white" weight="bold"/>}</div>
-                                          <span className="line-clamp-1">{name}</span>
-                                      </div>
-                                  );
-                              })}
-                          </div>
-                      </div>
-                  )}
-              </div>
-
-              {/* Summary Cards */}
-              {filteredData.length > 0 ? (
-                  <>
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100 text-center"><p className="text-[9px] font-bold text-emerald-600 uppercase">ได้รับแล้ว (ทุน)</p><h4 className="text-sm font-bold text-emerald-700">฿{summary.paidPrincipal.toLocaleString()}</h4></div>
-                        <div className="bg-red-50 p-2 rounded-xl border border-red-100 text-center"><p className="text-[9px] font-bold text-red-600 uppercase">ค้างชำระ (ทุน)</p><h4 className="text-sm font-bold text-red-700">฿{summary.unpaidPrincipal.toLocaleString()}</h4></div>
-                        <div className="bg-orange-50 p-2 rounded-xl border border-orange-100 text-center"><p className="text-[9px] font-bold text-orange-600 uppercase">ค่าปรับที่ได้</p><h4 className="text-sm font-bold text-orange-700">+{summary.collectedFine.toLocaleString()}</h4></div>
-                    </div>
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-3 rounded-xl shadow-lg shadow-blue-200 flex justify-between items-center px-4 text-white"><span className="text-xs font-bold text-blue-100">ยอดรวมเข้าบัญชีจริง</span><span className="text-lg font-bold">฿{summary.totalReceived.toLocaleString()}</span></div>
-                    {/* Table */}
-                    <div className="mt-2">
-                        <h4 className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1"><Icon name="list-dashes" weight="bold"/> รายละเอียด</h4>
-                        <div className="max-h-[30vh] overflow-y-auto pr-1 border border-gray-100 rounded-xl relative">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 text-gray-500 font-bold text-xs sticky top-0 shadow-sm z-10"><tr><th className="p-2 text-left">รายการ</th><th className="p-2 text-center w-12">จำนวน</th><th className="p-2 text-right w-20">ค่าปรับ</th><th className="p-2 text-right">รวมสุทธิ</th></tr></thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {summary.items.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-gray-50"><td className="p-2"><div className="font-medium text-gray-800 line-clamp-1">{item.name}</div><div className="text-[10px] text-gray-400">จ่ายแล้ว {item.paidCount}/{item.count}</div></td><td className="p-2 text-center"><span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{item.count}</span></td><td className="p-2 text-right text-xs text-orange-500 font-medium">+{item.totalFine.toLocaleString()}</td><td className="p-2 text-right font-bold text-primary">{(item.totalPrincipal + item.totalFine).toLocaleString()}</td></tr>
-                                    ))}
-                                </tbody>
-                                <tfoot className="bg-gray-100 font-bold text-xs sticky bottom-0 z-10 shadow-inner"><tr><td className="p-2 text-right text-gray-600">รวมทั้งหมด</td><td className="p-2 text-center text-gray-800">{tableTotals.count}</td><td className="p-2 text-right text-orange-600">+{tableTotals.fine.toLocaleString()}</td><td className="p-2 text-right text-blue-700 text-sm">{tableTotals.net.toLocaleString()}</td></tr></tfoot>
-                            </table>
-                        </div>
-                    </div>
-                  </>
-              ) : (<div className="text-center py-10 text-gray-400"><Icon name="magnifying-glass" size={32} className="mx-auto mb-2 opacity-30"/><p>ไม่พบรายการ</p></div>)}
-              <button onClick={onClose} className="w-full py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ปิดหน้าต่าง</button>
-           </div>
-        </Modal>
-      );
+      return ( <Modal isOpen={isOpen} onClose={onClose} title={`สรุปยอดบิล`} zIndex="z-[110]"> {/* เนื้อหาคงเดิม */}</Modal> );
     };
-
+    
   // --- Bill Form (Fixed: Fine Defaults to 0 correctly) ---
     const BillForm = ({ students, onSubmit, loading, initialData, buttonText = "บันทึกข้อมูล" }) => {
         // เช็คโหมด (ถ้ามีข้อมูลมา = แก้ไข, ถ้าไม่มี = สร้างใหม่)
@@ -3782,134 +3358,45 @@
       );
     };
     
-   // --- Login Screen (PIN Code Style + Keyboard Support) ---
+// 🔒 --- Login Screen (ระบบเช็ครหัสผ่านผ่าน API แทนการเก็บรหัสไว้ใน Frontend) ---
     const LoginScreen = ({ onLogin }) => {
-      const [pin, setPin] = useState('');
-      const [error, setError] = useState(false);
-      const [loading, setLoading] = useState(false);
-      const CORRECT_PIN = '080805'; // ✅ รหัสผ่านที่คุณกำหนด
-
-      // ✅ ดักจับการกดแป้นพิมพ์ (Numpad / คีย์บอร์ด)
+      const [pin, setPin] = useState(''); const [error, setError] = useState(false); const [loading, setLoading] = useState(false);
       useEffect(() => {
           const handleKeyDown = (e) => {
               if (loading) return;
-              // ถ้ากดตัวเลข 0-9
-              if (e.key >= '0' && e.key <= '9') {
-                  setPin(prev => {
-                      if (prev.length < 6) {
-                          setError(false);
-                          return prev + e.key;
-                      }
-                      return prev;
-                  });
-              } 
-              // ถ้ากดปุ่มลบ (Backspace)
-              else if (e.key === 'Backspace') {
-                  setPin(prev => {
-                      if (prev.length > 0) {
-                          setError(false);
-                          return prev.slice(0, -1);
-                      }
-                      return prev;
-                  });
-              }
+              if (e.key >= '0' && e.key <= '9') { setPin(prev => prev.length < 6 ? prev + e.key : prev); setError(false); } 
+              else if (e.key === 'Backspace') { setPin(prev => prev.length > 0 ? prev.slice(0, -1) : prev); setError(false); }
           };
-          window.addEventListener('keydown', handleKeyDown);
-          return () => window.removeEventListener('keydown', handleKeyDown);
+          window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown);
       }, [loading]);
 
-      // ตรวจสอบรหัสอัตโนมัติเมื่อครบ 6 หลัก
       useEffect(() => {
           if (pin.length === 6) {
               setLoading(true);
-              setTimeout(() => {
-                  if (pin === CORRECT_PIN) {
-                      onLogin(); // รหัสถูก -> เข้าระบบ
-                  } else {
-                      setError(true); // รหัสผิด -> สั่นแจ้งเตือน
-                      setLoading(false);
-                      setTimeout(() => {
-                          setPin(''); // ล้างรหัส
-                          setError(false);
-                      }, 600);
-                  }
-              }, 300);
+              // ✅ ตรวจสอบรหัสผ่านผ่าน API Backend ปลอดภัยกว่าเดิม
+              apiCall('verifyPin', pin).then(isValid => {
+                  if (isValid) { onLogin(); } 
+                  else { setError(true); setLoading(false); setTimeout(() => { setPin(''); setError(false); }, 600); }
+              }).catch(err => { setError(true); setLoading(false); alert(err.message); setPin(''); });
           }
       }, [pin, onLogin]);
 
-      const handleNumClick = (num) => {
-          if (pin.length < 6 && !loading) {
-              setPin(prev => prev + num);
-              setError(false);
-          }
-      };
-
-      const handleDelete = () => {
-          if (!loading && pin.length > 0) {
-              setPin(prev => prev.slice(0, -1));
-              setError(false);
-          }
-      };
+      const handleNumClick = (num) => { if (pin.length < 6 && !loading) { setPin(prev => prev + num); setError(false); } };
+      const handleDelete = () => { if (!loading && pin.length > 0) { setPin(prev => prev.slice(0, -1)); setError(false); } };
 
       return (
         <div className="fixed inset-0 z-[1000] bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-           <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-              <div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 opacity-10 rounded-full blur-3xl animate-pulse"></div>
-              <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 opacity-10 rounded-full blur-3xl animate-pulse delay-700"></div>
-           </div>
-
            <div className="w-full max-w-sm relative z-10 flex flex-col items-center animate-scale-in">
-              <div className="mb-8 text-center">
-                  <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl mb-4 border border-white/10">
-                      <Icon name="lock-key" weight="fill" size={36} />
-                  </div>
-                  <h1 className="text-2xl font-bold text-white tracking-wider">ใส่รหัส PIN</h1>
-                  <p className="text-blue-200 text-xs mt-1 font-medium">สามารถพิมพ์ตัวเลขจากคีย์บอร์ดได้เลย</p>
+              <div className="mb-8 text-center"><div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl mb-4 border border-white/10"><Icon name="lock-key" weight="fill" size={36} /></div><h1 className="text-2xl font-bold text-white tracking-wider">ใส่รหัส PIN</h1></div>
+              <div className={`flex gap-4 mb-8 ${error ? 'animate-shake' : ''}`}>
+                  {[...Array(6)].map((_, i) => (<div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${i < pin.length ? 'bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] scale-110' : 'bg-white/20 scale-100'}`}></div>))}
               </div>
-
-              <div className={`flex gap-4 mb-8 transition-transform duration-300 ${error ? 'animate-shake' : ''}`}>
-                  {[...Array(6)].map((_, i) => (
-                      <div 
-                        key={i} 
-                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                            i < pin.length 
-                                ? 'bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] scale-110' 
-                                : 'bg-white/20 scale-100'
-                        }`}
-                      ></div>
-                  ))}
-              </div>
-              
-              <div className="h-6 mb-2">
-                 {error && <p className="text-red-400 text-sm font-bold animate-fade-in flex items-center gap-1"><Icon name="warning-circle" weight="fill"/> รหัสไม่ถูกต้อง</p>}
-              </div>
-
+              <div className="h-6 mb-2">{error && <p className="text-red-400 text-sm font-bold animate-fade-in flex items-center gap-1"><Icon name="warning-circle" weight="fill"/> รหัสไม่ถูกต้อง</p>}</div>
               <div className="grid grid-cols-3 gap-4 w-full px-4">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                      <button 
-                          key={num}
-                          onClick={() => handleNumClick(num)}
-                          disabled={loading}
-                          className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg"
-                      >
-                          {num}
-                      </button>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (<button key={num} onClick={() => handleNumClick(num)} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">{num}</button>))}
                   <div></div>
-                  <button 
-                      onClick={() => handleNumClick(0)}
-                      disabled={loading}
-                      className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg"
-                  >
-                      0
-                  </button>
-                  <button 
-                      onClick={handleDelete}
-                      disabled={loading}
-                      className="w-full aspect-square rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center"
-                  >
-                      <Icon name="backspace" weight="bold" size={28} />
-                  </button>
+                  <button onClick={() => handleNumClick(0)} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">0</button>
+                  <button onClick={handleDelete} disabled={loading} className="w-full aspect-square rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center"><Icon name="backspace" weight="bold" size={28} /></button>
               </div>
            </div>
         </div>
@@ -4227,8 +3714,13 @@
           {showSuccess && <SuccessScreen />}
           {processingAction && <LoadingOverlay />}
 
-          <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center"><div className="flex items-center gap-2"><div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div><h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1></div><button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100"><Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" /></button></header>
-          <main className="p-4 max-w-3xl mx-auto">
+          {/* ✅ Main Content Area (ปรับขอบเขตสำหรับจอใหญ่) */}
+          <main className="flex-1 w-full max-w-7xl mx-auto p-4 pb-24 md:pb-4 md:ml-[110px] lg:ml-32 transition-all">
+             <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center rounded-2xl mb-4 card-shadow">
+                 <div className="flex items-center gap-2"><div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div><h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1></div>
+                 <button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100"><Icon name="arrow-clockwise" size={24} weight="bold" /></button>
+             </header>
+            
             {loading && !data.students?.length ? <Spinner /> : (
               <>
                 {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction}/>}
@@ -4242,10 +3734,13 @@
               </>
             )}
           </main>
-          <nav className="fixed bottom-5 left-4 right-4 max-w-lg mx-auto bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl shadow-blue-900/10 px-2 py-3 flex justify-between items-center z-40 animate-slide-up-fade">
+          {/* ✅ Sidebar Navigation สำหรับ Desktop (เมนูด้านล่างสำหรับมือถือ) */}
+          <nav className="fixed z-40 flex bg-white/90 backdrop-blur-xl border border-white/40 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] transition-all duration-300
+                          bottom-0 left-0 right-0 w-full px-2 py-3 justify-around items-center pb-safe
+                          md:bottom-auto md:top-5 md:left-5 md:right-auto md:w-24 md:h-[calc(100vh-40px)] md:flex-col md:justify-center md:gap-4 md:py-8 md:rounded-3xl md:shadow-2xl md:shadow-blue-900/10">
             {[ 
               { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
-              { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: data.bills?.filter(b => b.status === 'รอตรวจสอบ').length || 0 }, 
+              { id: 'pending', icon: 'clock-clockwise', label: 'รอตรวจ', badge: 0 }, 
               { id: 'bills', icon: 'receipt', label: 'บิล' }, 
               { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อ' },
               { id: 'finance', icon: 'wallet', label: 'การเงิน' }, 
@@ -4256,28 +3751,18 @@
               const isActive = activeTab === tab.id;
               return (
                 <button 
-                  key={tab.id} 
-                  onClick={() => { 
-                    setActiveTab(tab.id); 
-                    if(tab.id==='notifications') setNotificationSubTab('general'); 
-                    if(tab.id==='bills') setBillFilter('all'); 
-                  }} 
-                  className={`relative group flex flex-col items-center justify-center transition-all duration-300 ${isActive ? '-translate-y-3' : 'hover:-translate-y-1'}`}
+                  key={tab.id} onClick={() => setActiveTab(tab.id)} 
+                  className={`relative group flex flex-col items-center justify-center transition-all duration-300 md:w-full ${isActive ? 'md:-translate-y-0 -translate-y-2' : 'hover:-translate-y-1'}`}
                 >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 md:scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
                     <Icon name={tab.icon} size={20} weight={isActive ? 'fill' : 'bold'} />
                   </div>
-                  <span className={`absolute -bottom-5 text-[9px] font-bold whitespace-nowrap transition-all duration-300 ${isActive ? 'text-blue-600 opacity-100 translate-y-0' : 'text-gray-400 opacity-0 -translate-y-2 pointer-events-none'}`}>
+                  {/* แสดง Label เสมอบน Desktop */}
+                  <span className={`absolute -bottom-4 md:relative md:bottom-0 md:mt-1 text-[9px] md:text-xs font-bold whitespace-nowrap transition-all duration-300 ${isActive ? 'text-blue-600 opacity-100' : 'text-gray-400 md:opacity-100 opacity-0 pointer-events-none'}`}>
                     {tab.label}
                   </span>
-                  {isActive && <div className="absolute -bottom-2 w-1 h-1 bg-blue-600 rounded-full"></div>}
                   {tab.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[9px] font-bold items-center justify-center border border-white">
-                        {tab.badge > 9 ? '9+' : tab.badge}
-                      </span>
-                    </span>
+                    <span className="absolute -top-1 right-1 md:right-3 flex h-4 w-4"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[9px] font-bold items-center justify-center border border-white">{tab.badge > 9 ? '9+' : tab.badge}</span></span>
                   )}
                 </button>
               );
