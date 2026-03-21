@@ -4259,29 +4259,32 @@
           if (!deleteTarget) return; 
           setProcessingAction('DELETE'); 
           setIsDeleteConfirmOpen(false); 
-          const targetId = deleteTarget.id; 
-          const targetType = deleteTarget.type;
+          const targetId = deleteTarget.id; const targetType = deleteTarget.type;
           
-          // อัปเดตหน้าจอชั่วคราว
           if (targetType === 'ORDER') setOrderData(prev => ({ ...prev, orders: prev.orders.filter(o => o.orderId !== targetId) }));
           else if (targetType === 'PRODUCT') setOrderData(prev => ({ ...prev, products: prev.products.filter(p => p.id !== targetId) }));
           else if (targetType === 'BILL') { setData(prev => ({ ...prev, bills: prev.bills.filter(b => b.billId !== targetId) })); setSelectedBill(null); }
           else if (targetType === 'HISTORY') setData(prev => ({ ...prev, history: prev.history.filter(h => h.billId !== targetId) }));
           else if (targetType === 'STUDENT') setData(prev => ({ ...prev, students: prev.students.filter(s => s.id !== targetId) }));
           else if (targetType === 'QR') setData(prev => ({ ...prev, amount: { ...prev.amount, qrCodes: prev.amount.qrCodes.filter(q => q.url !== targetId) } }));
+          // ✅ อัปเดตหน้าจอทันทีเมื่อลบประกาศ
+          else if (targetType === 'ANNOUNCEMENT') { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); }
           
-          const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
-          const onSuccess = () => finishAction(); // ✅ เรียก finishAction เพื่อโหลดข้อมูลใหม่ เมื่อหลังบ้านลบเสร็จแล้วเท่านั้น
-
-          // ส่งคำสั่งลบไปหลังบ้าน และรอจนกว่าจะเสร็จ
-          if (targetType === 'BILL') apiCall('deleteBill', targetId).then(onSuccess).catch(onError); 
-          else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).then(onSuccess).catch(onError); 
-          else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).then(onSuccess).catch(onError); 
-          else if (targetType === 'QR') apiCall('deleteQrCode', targetId).then(onSuccess).catch(onError); 
-          else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).then(onSuccess).catch(onError);
-          else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).then(onSuccess).catch(onError);
-          
-          setDeleteTarget(null);
+          setTimeout(() => {
+              const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
+              const onSuccess = () => finishAction();
+              
+              if (targetType === 'BILL') apiCall('deleteBill', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'QR') apiCall('deleteQrCode', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).then(onSuccess).catch(onError);
+              else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).then(onSuccess).catch(onError);
+              // ✅ ส่งคำสั่งไปลบหลังบ้าน
+              else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', { type: 'text', text: '' }).then(onSuccess).catch(onError);
+              
+              setDeleteTarget(null);
+          }, 500);
       };
 
       const handleCreateBill = (formData) => { 
@@ -4334,6 +4337,19 @@
           }).catch((err) => { 
               setProcessingAction(null); alert('Error: ' + err.message); 
           }); 
+      };
+      const handleDeleteAnnouncement = () => {
+          if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) {
+              setProcessingAction('ANNOUNCE'); 
+              // ส่งค่าว่างกลับไปเซฟ เพื่อเป็นการลบประกาศ
+              apiCall('updateAnnouncementData', { type: 'text', text: '' }).then((resText) => { 
+                  setData(prev => ({ ...prev, announcement: '' })); 
+                  setIsAnnounceModalOpen(false); 
+                  finishAction(); 
+              }).catch((err) => { 
+                  setProcessingAction(null); alert('Error: ' + err.message); 
+              }); 
+          }
       };
 
       const handleSaveStudent = (formData) => { 
@@ -4405,6 +4421,7 @@
       const handleDeleteProductClick = (id) => { setDeleteTarget({ type: 'PRODUCT', id: id }); setIsDeleteConfirmOpen(true); };
       const handleDeleteOrderClick = (id) => { setDeleteTarget({ type: 'ORDER', id: id }); setIsDeleteConfirmOpen(true); };
       const handleDeleteClick = () => { if(!selectedBill) return; setDeleteTarget({ type: 'BILL', id: selectedBill.billId }); setIsDeleteConfirmOpen(true); };
+      const handleDeleteAnnouncementClick = () => { setDeleteTarget({ type: 'ANNOUNCEMENT', id: 'announce' }); setIsDeleteConfirmOpen(true); };
       const handleDeleteHistoryClick = (billId) => { setDeleteTarget({ type: 'HISTORY', id: billId }); setIsDeleteConfirmOpen(true); };
       const handleDeleteStudentClick = (studentId) => { setDeleteTarget({ type: 'STUDENT', id: studentId }); setIsDeleteConfirmOpen(true); };
       const handleDeleteQrClick = (url) => { setDeleteTarget({ type: 'QR', id: url }); setIsDeleteConfirmOpen(true); };
@@ -4414,7 +4431,15 @@
       const openQrManager = () => { setEditingQrData(null); setIsQrModalOpen(true); };
       const openQrEditor = (qr) => { setEditingQrData(qr); setIsQrModalOpen(true); };
       const handleViewStudentBills = (studentId) => { setViewingStudentId(studentId); };
-      const getConfirmMessage = () => { if (deleteTarget?.type === 'HISTORY') return "คุณต้องการลบรายการประวัตินี้ใช่หรือไม่?"; if (deleteTarget?.type === 'STUDENT') return "คุณต้องการลบรายชื่อนักศึกษานี้ใช่หรือไม่?"; if (deleteTarget?.type === 'QR') return "คุณต้องการลบ QR Code นี้ใช่หรือไม่?"; if (deleteTarget?.type === 'PRODUCT') return "คุณต้องการลบสินค้านี้ใช่หรือไม่?"; if (deleteTarget?.type === 'ORDER') return "คุณต้องการลบออเดอร์นี้ใช่หรือไม่?"; return "คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"; };
+      const getConfirmMessage = () => { 
+          if (deleteTarget?.type === 'HISTORY') return "คุณต้องการลบรายการประวัตินี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'STUDENT') return "คุณต้องการลบรายชื่อนักศึกษานี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'QR') return "คุณต้องการลบ QR Code นี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'PRODUCT') return "คุณต้องการลบสินค้านี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'ORDER') return "คุณต้องการลบออเดอร์นี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'ANNOUNCEMENT') return "คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?"; // ✅ เพิ่มบรรทัดนี้
+          return "คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"; 
+      };
       const renderBillButtons = () => { if(!selectedBill) return null; const status = selectedBill.status; const notifySwitch = (<div className="flex items-center justify-end mb-4 gap-2 pt-4 border-t border-gray-100"><span className="text-xs font-medium text-gray-500">แจ้งเตือนไลน์</span><button onClick={() => setNotifyEnabled(!notifyEnabled)} className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${notifyEnabled ? 'bg-green-500' : 'bg-gray-200'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${notifyEnabled ? 'translate-x-4' : 'translate-x-0'}`} /></button></div>); if(status === 'ชำระแล้ว') return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-red-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>{processingAction === 'REJECT' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="x-circle" weight="bold"/>} ปฏิเสธ</button><button onClick={() => handleUpdateBill('รอตรวจสอบ')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-amber-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>{processingAction === 'WAIT_CHECK' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="clock-clockwise" weight="bold"/>} รอตรวจสอบ</button></div></div>); if(!status || status === '') return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('รอตรวจสอบ')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-amber-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>{processingAction === 'WAIT_CHECK' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="clock-clockwise" weight="bold"/>} ส่งเข้าตรวจสอบ</button><button onClick={() => handleUpdateBill('ชำระแล้ว')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-lg text-white flex justify-center items-center gap-2 ${processingAction ? 'bg-primary' : 'bg-blue-600 shadow-indigo-200 hover:bg-blue-700'}`}>{processingAction === 'APPROVE' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="check-circle" weight="bold"/>} อนุมัติ</button></div></div>); return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-red-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>{processingAction === 'REJECT' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="x-circle" weight="bold"/>} ปฏิเสธ</button><button onClick={() => handleUpdateBill('ชำระแล้ว')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-lg text-white flex justify-center items-center gap-2 ${processingAction ? 'bg-primary' : 'bg-blue-600 shadow-indigo-200 hover:bg-blue-700'}`}>{processingAction === 'APPROVE' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="check-circle" weight="bold"/>} อนุมัติ</button></div></div>); };
 
       if (!isLoggedIn) {
@@ -4667,7 +4692,7 @@ return (
             })()}
           </Modal>
 
-          <ConfirmModal isOpen={isDeleteConfirmOpen} onClose={() => !processingAction && setIsDeleteConfirmOpen(false)} onConfirm={confirmDelete} title={deleteTarget?.type === 'HISTORY' ? "ยืนยันลบประวัติ" : (deleteTarget?.type === 'STUDENT' ? "ยืนยันลบนักศึกษา" : (deleteTarget?.type === 'QR' ? "ยืนยันลบ QR Code" : (deleteTarget?.type === 'PRODUCT' ? "ยืนยันลบสินค้า" : (deleteTarget?.type === 'ORDER' ? "ยืนยันลบออเดอร์" : "ยืนยันการลบบิล"))))} message={getConfirmMessage()} loading={processingAction === 'DELETE'} />
+          <ConfirmModal isOpen={isDeleteConfirmOpen} onClose={() => !processingAction && setIsDeleteConfirmOpen(false)} onConfirm={confirmDelete} title={deleteTarget?.type === 'HISTORY' ? "ยืนยันลบประวัติ" : (deleteTarget?.type === 'STUDENT' ? "ยืนยันลบนักศึกษา" : (deleteTarget?.type === 'QR' ? "ยืนยันลบ QR Code" : (deleteTarget?.type === 'PRODUCT' ? "ยืนยันลบสินค้า" : (deleteTarget?.type === 'ORDER' ? "ยืนยันลบออเดอร์" : (deleteTarget?.type === 'ANNOUNCEMENT' ? "ยืนยันลบประกาศ" : "ยืนยันการลบบิล")))))} message={getConfirmMessage()} loading={processingAction === 'DELETE'} />
           <ConfirmModal isOpen={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} onConfirm={handleResetBill} title="ยืนยันการรีเซ็ตบิล" message={`ระบบจะทำการลบ:\n- วันที่ชำระ\n- รูปสลิป\n- รหัสอ้างอิง\n\nคุณยืนยันที่จะรีเซ็ตสถานะใช่หรือไม่?`} loading={processingAction === 'RESET'} confirmText="ยืนยันรีเซ็ต" isDestructive={true} />
           
           <ConfirmModal 
@@ -4684,6 +4709,7 @@ return (
               isDestructive={false} 
           />
 
+          {/* ✅ Modal จัดการประกาศ (มีปุ่มลบแล้ว) */}
           <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="จัดการประกาศ">
               <div className="space-y-4 pt-2">
                   <div className="flex bg-gray-100 p-1 rounded-xl">
@@ -4726,13 +4752,24 @@ return (
                       </div>
                   )}
 
-                  <button 
-                      onClick={handleSaveAnnouncement} 
-                      disabled={loading || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} 
-                      className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2"
-                  >
-                      {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : 'บันทึกประกาศ'}
-                  </button>
+                  {/* ✅ เพิ่มปุ่ม ลบ และ บันทึก */}
+                  <div className="flex gap-2 pt-2">
+                      <button 
+                          onClick={handleDeleteAnnouncementClick} 
+                          disabled={loading || !data.announcement} 
+                          className="px-4 py-3 rounded-xl bg-red-50 text-red-500 font-bold hover:bg-red-100 disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-300 transition flex items-center justify-center shadow-sm border border-red-100"
+                          title="ลบประกาศ"
+                      >
+                          <Icon name="trash" weight="bold" size={20}/>
+                      </button>
+                      <button 
+                          onClick={handleSaveAnnouncement} 
+                          disabled={loading || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} 
+                          className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2"
+                      >
+                          {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : 'บันทึกประกาศ'}
+                      </button>
+                  </div>
               </div>
           </Modal>
           <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างบิลใหม่"><BillForm students={data.students} onSubmit={handleCreateBill} loading={processingAction === 'CREATE_BILL'} /></Modal>
