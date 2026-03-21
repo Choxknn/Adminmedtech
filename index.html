@@ -1579,9 +1579,9 @@
         const qrCodes = data.amount.qrCodes || [];
         const isMaintenance = data.systemStatus === 'ON'; 
 
-        // ✅ แยกประเภทประกาศ (รูป หรือ ข้อความ)
-        const isImageAnnounce = data.announcement && String(data.announcement).startsWith('IMG:');
-        const announceContent = isImageAnnounce ? data.announcement.replace('IMG:', '') : data.announcement;
+        // ✅ เช็คว่าเป็นรูปภาพหรือไม่ โดยดูว่าขึ้นต้นด้วย http:// หรือ https:// (ไม่ต้องใช้ IMG: แล้ว)
+        const isImageAnnounce = data.announcement && String(data.announcement).match(/^https?:\/\//i);
+        const announceContent = data.announcement;
 
         const handleSwitchClick = () => {
             if (isToggling) return; 
@@ -4144,7 +4144,10 @@
         apiCall('getAllData')
             .then(response => {
                 if (!processingAction && !isEditing) { setData(response); } 
-                if (showSpinner) { setEditAnnouncement(response.announcement); setLoading(false); } 
+                
+                // ✅ แก้ไขตรงนี้: ลบ setEditAnnouncement ออกไปแล้ว เหลือแค่ปิด Loading
+                if (showSpinner) { setLoading(false); } 
+                
                 isFetchingRef.current = false;
             })
             .catch(err => {
