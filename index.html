@@ -1579,9 +1579,23 @@
         const qrCodes = data.amount.qrCodes || [];
         const isMaintenance = data.systemStatus === 'ON'; 
 
-        // ✅ เช็คว่าเป็นรูปภาพหรือไม่ โดยดูว่าขึ้นต้นด้วย http:// หรือ https:// (ไม่ต้องใช้ IMG: แล้ว)
-        const isImageAnnounce = data.announcement && String(data.announcement).match(/^https?:\/\//i);
-        const announceContent = data.announcement;
+        // ✅ 1. ดึงข้อความมาตัดช่องว่างซ้าย-ขวาออกก่อน
+        const rawAnnounce = String(data.announcement || '').trim();
+        
+        // ✅ 2. เช็คว่าเป็นลิงก์หรือไม่
+        const isImageAnnounce = rawAnnounce.startsWith('http://') || rawAnnounce.startsWith('https://');
+        
+        // ✅ 3. ฟังก์ชันแปลงลิงก์ Google Drive ให้หน้าเว็บดึงรูปมาโชว์ได้โดยไม่ถูกบล็อก
+        const getDirectImageUrl = (url) => {
+            const idMatch = url.match(/id=([a-zA-Z0-9_-]+)/);
+            if (idMatch) {
+                return `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+            }
+            return url;
+        };
+
+        // ✅ 4. ถ้าเป็นรูป ให้ใช้ลิงก์ที่แปลงแล้ว
+        const announceContent = isImageAnnounce ? getDirectImageUrl(rawAnnounce) : rawAnnounce;
 
         const handleSwitchClick = () => {
             if (isToggling) return; 
@@ -1640,7 +1654,12 @@
                             <h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ</h3>
                         </div>
                         <button onClick={() => { 
-                            setAnnounceForm({ type: isImageAnnounce ? 'image' : 'text', text: isImageAnnounce ? '' : announceContent, fileBase64: '', preview: isImageAnnounce ? announceContent : '' }); 
+                            setAnnounceForm({ 
+                                type: isImageAnnounce ? 'image' : 'text', 
+                                text: isImageAnnounce ? '' : rawAnnounce, 
+                                fileBase64: '', 
+                                preview: isImageAnnounce ? announceContent : '' // ส่งลิงก์ที่แปลงแล้วไปให้หน้าต่างแก้ไขโชว์รูป
+                            }); 
                             setIsAnnounceModalOpen(true); 
                         }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg">
                             <Icon name="pencil-simple" weight="bold" size={14}/>
