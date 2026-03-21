@@ -1554,12 +1554,11 @@
             </div>
         );
     };
-    // --- Dashboard View (Corrected Logic: ON=Maintenance, OFF=Active) ---
-    const DashboardView = ({ data, setData, setActiveTab, setEditAnnouncement, setIsAnnounceModalOpen, setIsQrModalOpen, onGoToOverdueBills, onGoToUnpaidBills, onOpenQrManager, onEditQr, onGoToOverdue, processingAction, setProcessingAction }) => {
+    // --- Dashboard View (Updated: Redesign & Compact Announcement) ---
+    const DashboardView = ({ data, setData, setActiveTab, setAnnounceForm, setIsAnnounceModalOpen, setIsQrModalOpen, onOpenQrManager, onEditQr, onGoToOverdue, onGoToOverdueBills, onGoToUnpaidBills, processingAction, setProcessingAction, onViewImage }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
-            const end = new Date();
-            const start = new Date(end.getFullYear(), end.getMonth(), 1); 
+            const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); 
             return { start: formatDateForInput(start), end: formatDateForInput(end) };
         });
 
@@ -1578,36 +1577,22 @@
         const allUnpaidCount = useMemo(() => data.bills.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ').length, [data.bills]);
         const allOverdueCount = useMemo(() => { const today = new Date(); today.setHours(0,0,0,0); return data.bills.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; return new Date(b.dueDate) < today; }).length; }, [data.bills]);
         const qrCodes = data.amount.qrCodes || [];
-
-        // ✅ Logic ที่ถูกต้อง: ON คือ "โหมดปรับปรุงทำงานอยู่" (ปิดระบบ)
         const isMaintenance = data.systemStatus === 'ON'; 
 
-        // --- Logic สวิตช์ ---
+        // ✅ แยกประเภทประกาศ (รูป หรือ ข้อความ)
+        const isImageAnnounce = data.announcement && String(data.announcement).startsWith('IMG:');
+        const announceContent = isImageAnnounce ? data.announcement.replace('IMG:', '') : data.announcement;
+
         const handleSwitchClick = () => {
             if (isToggling) return; 
-
-            // ถ้าตอนนี้เป็น ON (ปิดปรับปรุง) -> กดแล้วต้องเป็น OFF (เปิดระบบ)
-            // ถ้าตอนนี้เป็น OFF (เปิดระบบ) -> กดแล้วต้องเป็น ON (ปิดปรับปรุง)
-            const targetStatus = isMaintenance ? 'OFF' : 'ON';
-            
-            setConfirmModal({ isOpen: true, targetStatus: targetStatus });
+            setConfirmModal({ isOpen: true, targetStatus: isMaintenance ? 'OFF' : 'ON' });
         };
 
         const confirmToggle = () => {
-            setIsToggling(true);
-            setConfirmModal({ ...confirmModal, isOpen: false });
-
-            // ✅ เปลี่ยนจาก google.script.run มาใช้ apiCall
-            apiCall('toggleMaintenance', confirmModal.targetStatus)
-                .then((newData) => {
-                    if (setData) setData(newData);
-                    setIsToggling(false);
-                    setSuccessModal(true);
-                })
-                .catch((err) => {
-                    setIsToggling(false);
-                    alert("เกิดข้อผิดพลาด: " + err.message);
-                });
+            setIsToggling(true); setConfirmModal({ ...confirmModal, isOpen: false });
+            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => {
+                if (setData) setData(newData); setIsToggling(false); setSuccessModal(true);
+            }).catch((err) => { setIsToggling(false); alert("เกิดข้อผิดพลาด: " + err.message); });
         };
 
         return (
@@ -1621,77 +1606,74 @@
                     <h1 className="text-2xl font-bold text-gray-800 tracking-tight">CHOKUN</h1>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 p-0.5 shadow-md">
-                    <div className="w-full h-full bg-white rounded-full flex items-center justify-center">
-                        <Icon name="user" weight="bold" className="text-indigo-500"/>
-                    </div>
+                    <div className="w-full h-full bg-white rounded-full flex items-center justify-center"><Icon name="user" weight="bold" className="text-indigo-500"/></div>
                 </div>
             </div>
 
-            {/* ✅ System Control Panel (สวิตช์แบบ Maintenance Mode) */}
-            <div className={`p-5 rounded-3xl card-shadow border border-gray-100 flex justify-between items-center relative overflow-hidden mx-1 transition-colors duration-500 ${isMaintenance ? 'bg-red-50' : 'bg-white'}`}>
-                 
-                 {/* พื้นหลังตกแต่ง */}
-                 <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -translate-y-10 translate-x-10 opacity-30 transition-colors duration-500 ${isMaintenance ? 'bg-red-500' : 'bg-green-400'}`}></div>
-                 
-                 <div className="relative z-10">
-                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                         โหมดปรับปรุงระบบ: 
-                         <span className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-colors ${isMaintenance ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-                             {isMaintenance ? '🔴 เปิดใช้งาน (ON)' : '⚪️ ปิด (OFF)'}
-                         </span>
-                     </h3>
-                     <p className="text-xs text-gray-500 mt-1">
-                         {isMaintenance ? '⛔️ ระบบถูกปิดกั้นการเข้าถึง' : '✅ นักศึกษาเข้าใช้งานได้ปกติ'}
-                     </p>
-                 </div>
-
-                 {/* ตัวสวิตช์ (Toggle Switch) */}
-                 <div 
-                    onClick={handleSwitchClick}
-                    className={`relative z-10 w-16 h-9 rounded-full p-1 cursor-pointer transition-colors duration-300 ease-in-out shadow-inner flex items-center ${
-                        isToggling ? 'opacity-70 cursor-not-allowed' : ''
-                    } ${
-                        isMaintenance ? 'bg-red-500' : 'bg-gray-300'
-                    }`}
-                 >
-                     {/* ลูกกลิ้ง (Knob) */}
-                     <div className={`w-7 h-7 bg-white rounded-full shadow-md transform transition-transform duration-300 flex items-center justify-center ${
-                         isMaintenance ? 'translate-x-7' : 'translate-x-0'
-                     }`}>
-                         {isToggling ? (
-                             <Icon name="spinner" className="animate-spin text-gray-400" size={14} weight="bold"/>
-                         ) : (
-                             <Icon name={isMaintenance ? "prohibit" : "check"} className={isMaintenance ? "text-red-500" : "text-gray-400"} size={14} weight="bold"/>
-                         )}
+            {/* ✅ Layout: ระบบควมคุม + ประกาศ (หน้าจอคอมจะแบ่งซ้าย-ขวา) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mx-1">
+                
+                {/* 1. สวิตช์ปิดปรับปรุง */}
+                <div className={`p-4 rounded-2xl card-shadow border border-gray-100 flex justify-between items-center relative overflow-hidden transition-colors duration-500 ${isMaintenance ? 'bg-red-50' : 'bg-white'}`}>
+                     <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -translate-y-10 translate-x-10 opacity-30 transition-colors duration-500 ${isMaintenance ? 'bg-red-500' : 'bg-green-400'}`}></div>
+                     <div className="relative z-10">
+                         <h3 className="font-bold text-gray-800 text-sm md:text-base flex items-center gap-2">
+                             โหมดปรับปรุงระบบ: 
+                             <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-colors ${isMaintenance ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+                                 {isMaintenance ? '🔴 เปิดใช้งาน (ON)' : '⚪️ ปิด (OFF)'}
+                             </span>
+                         </h3>
+                         <p className="text-xs text-gray-500 mt-1">{isMaintenance ? '⛔️ ระบบถูกปิดกั้นการเข้าถึง' : '✅ นักศึกษาเข้าใช้งานได้ปกติ'}</p>
                      </div>
-                 </div>
-            </div>
+                     <div onClick={handleSwitchClick} className={`relative z-10 w-14 h-8 rounded-full p-1 cursor-pointer transition-colors duration-300 ease-in-out shadow-inner flex items-center ${isToggling ? 'opacity-70 cursor-not-allowed' : ''} ${isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}>
+                         <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 flex items-center justify-center ${isMaintenance ? 'translate-x-6' : 'translate-x-0'}`}>
+                             {isToggling ? <Icon name="spinner" className="animate-spin text-gray-400" size={12} weight="bold"/> : <Icon name={isMaintenance ? "prohibit" : "check"} className={isMaintenance ? "text-red-500" : "text-gray-400"} size={12} weight="bold"/>}
+                         </div>
+                     </div>
+                </div>
 
-            {/* Announcement Card (คงเดิม) */}
-            <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 via-blue-600 to-sky-500 p-6 text-white shadow-xl shadow-blue-200 group">
-                <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white opacity-10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-700"></div>
-                <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl"></div>
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-2"><div className="bg-white/20 p-2 rounded-xl backdrop-blur-md shadow-inner"><Icon name="megaphone" weight="fill" className="text-white"/></div><span className="text-xs font-bold bg-white/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 tracking-wide">ประกาศ</span></div>
-                        <button onClick={() => { setEditAnnouncement(data.announcement); setIsAnnounceModalOpen(true); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md transition"><Icon name="pencil-simple" weight="bold" size={16}/></button>
+                {/* 2. การ์ดประกาศขนาดกะทัดรัด (เลือกรูป หรือ ข้อความ) */}
+                <div className="bg-white p-4 rounded-2xl card-shadow border border-blue-100 flex flex-col gap-2 relative overflow-hidden">
+                    <div className="flex justify-between items-center mb-1">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div>
+                            <h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ</h3>
+                        </div>
+                        <button onClick={() => { 
+                            setAnnounceForm({ type: isImageAnnounce ? 'image' : 'text', text: isImageAnnounce ? '' : announceContent, fileBase64: '', preview: isImageAnnounce ? announceContent : '' }); 
+                            setIsAnnounceModalOpen(true); 
+                        }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg">
+                            <Icon name="pencil-simple" weight="bold" size={14}/>
+                        </button>
                     </div>
-                    <p className="text-white/90 font-light leading-relaxed text-sm whitespace-pre-wrap min-h-[60px]">{data.announcement || "ไม่มีประกาศในขณะนี้..."}</p>
+                    {isImageAnnounce ? (
+                        <div className="w-full h-24 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}>
+                            <img src={announceContent} className="w-full h-full object-cover" alt="Announcement"/>
+                        </div>
+                    ) : (
+                        <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-50 min-h-[60px] flex items-center">
+                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap line-clamp-3">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p>
+                        </div>
+                    )}
                 </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="space-y-3">
+            <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center px-2">
                     <h3 className="text-gray-800 font-bold text-lg">ภาพรวมระบบ</h3>
                     <button onClick={() => setIsDateFilterActive(!isDateFilterActive)} className={`text-xs font-bold flex items-center gap-1 transition ${isDateFilterActive ? 'text-primary bg-blue-50 px-2 py-1 rounded-lg' : 'text-gray-400'}`}><Icon name="calendar" weight="bold"/> {isDateFilterActive ? 'ปิดตัวกรอง' : 'กรองวันที่'}</button>
                 </div>
                 <div className={`overflow-hidden transition-all duration-300 ${isDateFilterActive ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'}`}><DateRangeFilter startDate={dateFilter.start} endDate={dateFilter.end} onChange={handleDateChange} isActive={isDateFilterActive} onToggle={() => {}} /></div>
+                
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2 bg-white p-5 rounded-3xl card-shadow border border-gray-100 flex items-center justify-between relative overflow-hidden">
-                        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-emerald-50 to-transparent"></div>
-                        <div><p className="text-gray-400 text-xs font-bold mb-1">{isDateFilterActive ? "รายรับ (ตามช่วงเวลา)" : "รายรับทั้งหมด"}</p><h2 className="text-3xl font-extrabold text-emerald-600 tracking-tight">฿{Number(totalBalance).toLocaleString()}</h2></div>
-                        <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center relative z-10"><Icon name="wallet" weight="fill" size={24}/></div>
+                    <div className="col-span-2 bg-gradient-to-r from-emerald-500 to-teal-500 p-5 rounded-3xl card-shadow flex items-center justify-between relative overflow-hidden text-white shadow-emerald-200">
+                        <div className="absolute right-0 top-0 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl -translate-y-10 translate-x-10"></div>
+                        <div className="relative z-10">
+                            <p className="text-emerald-100 text-xs font-bold mb-1">{isDateFilterActive ? "รายรับ (ตามช่วงเวลา)" : "รายรับทั้งหมด"}</p>
+                            <h2 className="text-3xl font-black tracking-tight">฿{Number(totalBalance).toLocaleString()}</h2>
+                        </div>
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center relative z-10 shadow-inner"><Icon name="wallet" weight="fill" size={24}/></div>
                     </div>
                     <StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('pending')} alert={pendingBillsCount > 0} variant="warning" />
                     <StatCard title="ค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
@@ -4111,7 +4093,7 @@
       const [viewingStudentId, setViewingStudentId] = useState(null);
       const [viewingSlipUrl, setViewingSlipUrl] = useState(null);
       const [isEditing, setIsEditing] = useState(false); 
-      const [editAnnouncement, setEditAnnouncement] = useState('');
+      const [announceForm, setAnnounceForm] = useState({ type: 'text', text: '', fileBase64: '', preview: '' });
       const [editingQrData, setEditingQrData] = useState(null);
       
       const [isAnnounceModalOpen, setIsAnnounceModalOpen] = useState(false);
@@ -4323,8 +4305,10 @@
 
       const handleSaveAnnouncement = () => { 
           setProcessingAction('ANNOUNCE'); 
-          apiCall('updateAnnouncement', editAnnouncement).then((text) => { 
-              setData(prev => ({ ...prev, announcement: text })); setIsAnnounceModalOpen(false); finishAction(); 
+          apiCall('updateAnnouncementData', announceForm).then((resText) => { 
+              setData(prev => ({ ...prev, announcement: resText })); 
+              setIsAnnounceModalOpen(false); 
+              finishAction(); 
           }).catch((err) => { 
               setProcessingAction(null); alert('Error: ' + err.message); 
           }); 
@@ -4481,7 +4465,7 @@ return (
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
-                  {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setEditAnnouncement={setEditAnnouncement} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction}/>}
+                  {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl}/>}
                   {activeTab === 'pending' && <PendingView data={data} setSelectedBill={setSelectedBill} />}
                   {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                   {activeTab === 'history' && <HistoryView data={data} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
@@ -4678,7 +4662,57 @@ return (
               isDestructive={false} 
           />
 
-          <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="แก้ไขประกาศ"><div className="space-y-4"><textarea value={editAnnouncement} onChange={(e) => setEditAnnouncement(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[150px]" placeholder="พิมพ์ข้อความประกาศที่นี่..."></textarea><button onClick={handleSaveAnnouncement} disabled={loading} className="w-full py-3 rounded-xl bg-primary text-white font-medium shadow-lg hover:bg-blue-700 transition">{loading ? 'กำลังบันทึก...' : 'บันทึกประกาศ'}</button></div></Modal>
+          <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="จัดการประกาศ">
+              <div className="space-y-4 pt-2">
+                  <div className="flex bg-gray-100 p-1 rounded-xl">
+                      <button onClick={() => setAnnounceForm({...announceForm, type: 'text'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${announceForm.type === 'text' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>📝 พิมพ์ข้อความ</button>
+                      <button onClick={() => setAnnounceForm({...announceForm, type: 'image'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${announceForm.type === 'image' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🖼️ อัปโหลดรูปภาพ</button>
+                  </div>
+
+                  {announceForm.type === 'text' ? (
+                      <textarea 
+                          value={announceForm.text} 
+                          onChange={(e) => setAnnounceForm({...announceForm, text: e.target.value})} 
+                          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:bg-white outline-none min-h-[150px] text-sm transition-all" 
+                          placeholder="พิมพ์ข้อความประกาศที่นี่..."
+                      ></textarea>
+                  ) : (
+                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition relative cursor-pointer bg-white group">
+                          <input type="file" accept="image/*" onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => setAnnounceForm({...announceForm, fileBase64: reader.result.split(',')[1], preview: reader.result});
+                                  reader.readAsDataURL(file);
+                              }
+                          }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                          
+                          {announceForm.preview ? (
+                              <div className="relative">
+                                  <img src={announceForm.preview} className="h-40 object-contain mx-auto rounded-lg shadow-sm" alt="Preview"/>
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-lg text-white font-medium backdrop-blur-sm">
+                                      <Icon name="camera" className="mr-2"/> เปลี่ยนรูปภาพ
+                                  </div>
+                              </div>
+                          ) : (
+                              <div className="py-6">
+                                  <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3"><Icon name="upload-simple" size={24} weight="bold"/></div>
+                                  <p className="text-sm text-gray-600 font-medium">แตะเพื่อเลือกรูปภาพโปรโมชั่น / ประกาศ</p>
+                                  <p className="text-xs text-gray-400 mt-1">ระบบจะแสดงเป็นแบนเนอร์อัตโนมัติ</p>
+                              </div>
+                          )}
+                      </div>
+                  )}
+
+                  <button 
+                      onClick={handleSaveAnnouncement} 
+                      disabled={loading || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} 
+                      className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2"
+                  >
+                      {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : 'บันทึกประกาศ'}
+                  </button>
+              </div>
+          </Modal>
           <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างบิลใหม่"><BillForm students={data.students} onSubmit={handleCreateBill} loading={processingAction === 'CREATE_BILL'} /></Modal>
           <Modal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} title={selectedStudent ? "แก้ไขนักศึกษา" : "เพิ่มนักศึกษา"}><StudentForm onSubmit={handleSaveStudent} loading={processingAction === 'SAVE_STUDENT'} initialData={selectedStudent} /></Modal>
           <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students?.find(s => s.id === viewingStudentId)} bills={data.bills?.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
