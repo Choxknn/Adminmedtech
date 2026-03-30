@@ -1976,8 +1976,8 @@
         );
     };
 
-   // --- Dashboard View ---
-    const DashboardView = ({ data, orderData, setActiveTab, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills }) => {
+   // --- Dashboard View (อัปเดตเพิ่มรายการเคลื่อนไหวล่าสุด) ---
+    const DashboardView = ({ data, setActiveTab, onGoToOverdueBills, onGoToUnpaidBills }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
             const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); 
@@ -1986,7 +1986,6 @@
 
         const handleDateChange = (type, value) => { setDateFilter(prev => ({ ...prev, [type]: value })); };
 
-        // คำนวณภาพรวม
         const totalBalance = useMemo(() => { 
             if (!isDateFilterActive) return data.history.reduce((sum, item) => sum + (Number(item.total) || 0), 0); 
             return data.history.filter(h => isDateInRange(h.payDate || h.timestamp, dateFilter.start, dateFilter.end)).reduce((sum, item) => sum + (Number(item.total) || 0), 0); 
@@ -1996,23 +1995,33 @@
         const allUnpaidCount = useMemo(() => data.bills.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ').length, [data.bills]);
         const allOverdueCount = useMemo(() => { const today = new Date(); today.setHours(0,0,0,0); return data.bills.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; return new Date(b.dueDate) < today; }).length; }, [data.bills]);
 
-        // คำนวณสรุปการเงิน
-        const financeSummary = useMemo(() => {
-            let inc = 0, exp = 0;
-            (data.finance || []).forEach(f => {
-                if (f.type === 'รายรับ') inc += Number(f.amount) || 0;
-                else exp += Number(f.amount) || 0;
-            });
-            return { inc, exp, bal: inc - exp };
-        }, [data.finance]);
+        // --- ดึงข้อมูล 5 รายการล่าสุด ---
+        const recentPayments = useMemo(() => {
+            if (!data.history) return [];
+            return [...data.history]
+                .sort((a, b) => new Date(b.payDate || b.timestamp || 0).getTime() < new Date(a.payDate || a.timestamp || 0).getTime() ? -1 : 1)
+                .slice(0, 5);
+        }, [data.history]);
 
-        // คำนวณสรุปคำสั่งซื้อ
-        const orderSummary = useMemo(() => {
-            const orders = orderData?.orders || [];
-            const totalRev = orders.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
-            const pendingOrders = orders.filter(o => o.status === 'รอตรวจสอบ' || o.status === 'รอดำเนินการ').length;
-            return { count: orders.length, rev: totalRev, pending: pendingOrders };
-        }, [orderData?.orders]);
+        const recentPending = useMemo(() => {
+            if (!data.bills) return [];
+            return [...data.bills].filter(b => b.status === 'รอตรวจสอบ').reverse().slice(0, 5);
+        }, [data.bills]);
+
+        // --- Helper: แปลงเวลาเป็น "นาทีที่แล้ว" ---
+        const formatTimeAgo = (dateStr) => {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            if (diffMins < 1) return 'เมื่อสักครู่';
+            if (diffMins < 60) return `${diffMins} นาทีที่แล้ว`;
+            const diffHrs = Math.floor(diffMins / 60);
+            if (diffHrs < 24) return `${diffHrs} ชั่วโมงที่แล้ว`;
+            return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+        };
 
         return (
           <div className="space-y-6 animate-fade-in pb-24 relative">
@@ -2044,155 +2053,99 @@
                         </div>
                         <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center relative z-10 shadow-inner"><Icon name="wallet" weight="fill" size={24}/></div>
                     </div>
-                    
-                    <StatCard title="บิลรอตรวจ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={onGoToPendingBills} alert={pendingBillsCount > 0} variant="warning" />
-                    <StatCard title="บิลค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
-                    
-                    {/* ✅ สรุปการเงิน */}
-                    <div className="bg-white p-3.5 rounded-2xl card-shadow border border-gray-100 flex flex-col justify-center hover:bg-gray-50 transition cursor-pointer" onClick={() => setActiveTab('finance')}>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1 mb-1"><Icon name="bank" weight="fill"/> งบการเงิน</p>
-                        <h3 className="text-lg font-black text-emerald-600">฿{financeSummary.bal.toLocaleString()}</h3>
-                        <div className="flex text-[9px] text-gray-500 mt-1 gap-2 font-medium">
-                            <span className="text-emerald-500">รับ {financeSummary.inc.toLocaleString()}</span>
-                            <span className="text-red-400">จ่าย {financeSummary.exp.toLocaleString()}</span>
-                        </div>
-                    </div>
-                    
-                    {/* ✅ สรุปคำสั่งซื้อ */}
-                    <div className="bg-white p-3.5 rounded-2xl card-shadow border border-gray-100 flex flex-col justify-center hover:bg-gray-50 transition cursor-pointer" onClick={() => setActiveTab('orders')}>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1 mb-1"><Icon name="shopping-cart" weight="fill"/> ยอดขายร้านค้า</p>
-                        <h3 className="text-lg font-black text-blue-600">฿{orderSummary.rev.toLocaleString()}</h3>
-                        <p className="text-[9px] text-gray-500 mt-1 font-medium">ออเดอร์ทั้งหมด {orderSummary.count} (รอตรวจ {orderSummary.pending})</p>
-                    </div>
-
+                    <StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('pending')} alert={pendingBillsCount > 0} variant="warning" />
+                    <StatCard title="ค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
                     <div className="col-span-2"><StatCard title="เกินกำหนดชำระ" value={`${allOverdueCount} รายการ`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" /></div>
                 </div>
+            </div>
+
+            {/* 🆕 ส่วนแสดงรายการเคลื่อนไหวล่าสุด 🆕 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mx-1 mt-6">
+                
+                {/* รอดำเนินการล่าสุด */}
+                <div className="bg-white rounded-[2rem] p-5 card-shadow border border-gray-100 flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                            <div className="bg-amber-100 text-amber-600 p-1.5 rounded-xl"><Icon name="clock-clockwise" weight="fill" size={18} /></div>
+                            บิลรอตรวจล่าสุด
+                        </h3>
+                        <button onClick={() => setActiveTab('pending')} className="text-[10px] text-blue-600 font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">ดูทั้งหมด</button>
+                    </div>
+                    
+                    <div className="space-y-3 flex-1">
+                        {recentPending.length > 0 ? recentPending.map((bill, idx) => {
+                            const studentName = data.students.find(s => String(s.id) === String(bill.studentId))?.name || 'ไม่ทราบชื่อ';
+                            return (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-amber-50/50 rounded-2xl transition border border-transparent hover:border-amber-100 cursor-pointer group" onClick={() => setActiveTab('pending')}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-sm font-black text-gray-400 shadow-sm flex-shrink-0 group-hover:text-amber-500 transition-colors">
+                                            {String(studentName).charAt(0)}
+                                        </div>
+                                        <div className="min-w-0 pr-2">
+                                            <p className="text-sm font-bold text-gray-800 truncate leading-tight">{studentName}</p>
+                                            <p className="text-[10px] text-gray-500 truncate mt-0.5">{bill.item}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <p className="text-sm font-black text-amber-600">฿{Number(bill.amount).toLocaleString()}</p>
+                                        <p className="text-[9px] text-amber-600/70 font-bold mt-1 flex items-center justify-end gap-1"><Icon name="magnifying-glass" weight="bold"/> รอตรวจ</p>
+                                    </div>
+                                </div>
+                            )
+                        }) : (
+                            <div className="h-full flex flex-col items-center justify-center py-6 text-gray-400">
+                                <Icon name="check-circle" size={36} className="opacity-20 mb-2" weight="fill"/>
+                                <p className="text-xs font-medium">ไม่มีรายการค้างตรวจ</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ชำระเงินล่าสุด */}
+                <div className="bg-white rounded-[2rem] p-5 card-shadow border border-gray-100 flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                            <div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-xl"><Icon name="check-circle" weight="fill" size={18} /></div>
+                            ประวัติชำระเงินล่าสุด
+                        </h3>
+                        <button onClick={() => setActiveTab('history')} className="text-[10px] text-blue-600 font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">ดูประวัติ</button>
+                    </div>
+                    
+                    <div className="space-y-3 flex-1">
+                        {recentPayments.length > 0 ? recentPayments.map((item, idx) => {
+                            const studentName = data.students.find(s => String(s.id) === String(item.studentId))?.name || item.name || 'ไม่ทราบชื่อ';
+                            return (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-emerald-50/50 rounded-2xl transition border border-transparent hover:border-emerald-100 cursor-pointer group" onClick={() => setActiveTab('history')}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-sm font-black text-gray-400 shadow-sm flex-shrink-0 group-hover:text-emerald-500 transition-colors">
+                                            {String(studentName).charAt(0)}
+                                        </div>
+                                        <div className="min-w-0 pr-2">
+                                            <p className="text-sm font-bold text-gray-800 truncate leading-tight">{studentName}</p>
+                                            <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.item}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <p className="text-sm font-black text-emerald-600">+฿{Number(item.total || item.amount).toLocaleString()}</p>
+                                        <p className="text-[9px] text-gray-400 font-bold mt-1 tracking-tight">{formatTimeAgo(item.payDate || item.timestamp)}</p>
+                                    </div>
+                                </div>
+                            )
+                        }) : (
+                            <div className="h-full flex flex-col items-center justify-center py-6 text-gray-400">
+                                <Icon name="receipt" size={36} className="opacity-20 mb-2" weight="duotone"/>
+                                <p className="text-xs font-medium">ยังไม่มีประวัติการชำระเงิน</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
             </div>
           </div>
         );
     };
 
-    // --- Pending View (Redesigned: Task List Style) ---
-    const PendingView = ({ data, setSelectedBill }) => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const [sortOrder, setSortOrder] = useState('newest');
-
-        const pendingBills = useMemo(() => {
-          let bills = data.bills.filter(b => b.status === 'รอตรวจสอบ');
-          if(searchTerm) { const lower = searchTerm.toLowerCase(); bills = bills.filter(b => String(b.item).toLowerCase().includes(lower) || String(b.billId).toLowerCase().includes(lower) || String(b.studentId).toLowerCase().includes(lower)); }
-          return sortOrder === 'newest' ? [...bills].reverse() : bills;
-        }, [data.bills, searchTerm, sortOrder]);
-
-        return (
-          <div className="space-y-5 pb-24 relative">
-             <ScrollToTopBottom />
-
-             {/* 1. Header with Pulse Effect */}
-             <div className="bg-amber-500 rounded-2xl p-5 text-white shadow-lg shadow-amber-200 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl -translate-y-6 translate-x-6"></div>
-                <div className="relative z-10 flex justify-between items-center">
-                    <div>
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <div className="bg-white/20 p-1.5 rounded-lg animate-pulse">
-                                <Icon name="clock-clockwise" weight="fill" />
-                            </div>
-                            รอตรวจสอบ
-                        </h2>
-                        <p className="text-amber-100 text-xs mt-1">รายการที่แจ้งโอนแล้ว รอแอดมินยืนยัน</p>
-                    </div>
-                    <div className="text-right">
-                        <span className="text-3xl font-bold">{pendingBills.length}</span>
-                        <span className="text-xs block opacity-80">รายการ</span>
-                    </div>
-                </div>
-             </div>
-
-             {/* 2. Search & Sort */}
-             <div className="flex gap-3 sticky top-0 z-20 bg-background py-2">
-                 <div className="flex-1 bg-white rounded-xl card-shadow border border-gray-100 flex items-center px-4 py-2.5 transition focus-within:ring-2 focus-within:ring-amber-400/30">
-                    <Icon name="magnifying-glass" className="text-gray-400 mr-3" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="ค้นหาชื่อ, รหัส..." 
-                        className="w-full bg-transparent text-sm font-medium text-gray-700 outline-none placeholder-gray-400"
-                        value={searchTerm} 
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                    {searchTerm && <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 ml-2"><Icon name="x-circle" weight="fill" /></button>}
-                 </div>
-                 <button 
-                    onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} 
-                    className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-gray-500 hover:bg-gray-50 transition active:scale-95"
-                 >
-                    <Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20} />
-                 </button>
-             </div>
-
-             {/* 3. Pending Cards */}
-             <div className="space-y-3">
-              {pendingBills.map((bill, idx) => {
-                const fine = calculateFine(bill);
-                const studentName = data.students.find(s => s.id === bill.studentId)?.name || '';
-                const netTotal = Number(bill.amount) + fine - Number(bill.discount || 0);
-
-                return (
-                  <div key={idx} onClick={() => setSelectedBill(bill)} className="group relative bg-white rounded-2xl p-4 card-shadow border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
-                    
-                    <div className="flex items-start gap-4">
-                        {/* Icon Box (Amber) */}
-                        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0 animate-pulse">
-                            <Icon name="hourglass-high" weight="fill" size={24} />
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0 flex justify-between">
-                            <div className="flex-1 min-w-0 mr-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded">{bill.studentId}</span>
-                                    <span className="text-sm font-bold text-gray-800 truncate">{studentName}</span>
-                                </div>
-                                <h4 className="text-gray-600 text-sm font-medium mb-2 line-clamp-1">{bill.item}</h4>
-                                
-                                <div className="flex items-center gap-3 text-xs text-gray-400">
-                                    <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg">
-                                        <Icon name="calendar-blank" weight="bold" className="text-amber-400"/>
-                                        <span>{formatDate(bill.dueDate)}</span>
-                                    </div>
-                                    {fine > 0 && (<span className="text-red-500 font-bold ml-1">+{fine} ค่าปรับ</span>)}
-                                </div>
-                            </div>
-
-                            {/* Amount & CTA */}
-                            <div className="flex flex-col items-end justify-between flex-shrink-0">
-                                <div className="text-right">
-                                    <div className="text-lg font-extrabold text-amber-600">฿{netTotal.toLocaleString()}</div>
-                                    {bill.discount > 0 && <div className="text-[10px] text-gray-400 line-through">฿{Number(bill.amount).toLocaleString()}</div>}
-                                </div>
-                                <span className="text-[10px] bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold flex items-center gap-1">
-                                    แตะเพื่อตรวจ <Icon name="caret-right" weight="bold"/>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {pendingBills.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-300 animate-fade-in">
-                      <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-4">
-                        <Icon name="check-fat" size={40} className="text-green-400" weight="fill" />
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-700">เยี่ยมมาก!</h3>
-                      <p className="text-sm font-medium text-gray-400">ไม่มีรายการรอตรวจสอบแล้ว</p>
-                  </div>
-              )}
-             </div>
-          </div>
-        );
-    };
-
-    // --- Bill View (แก้เรียงตามรหัสบิล + โชว์รหัสบิลที่การ์ด) ---
+    // --- Bill View (ปรับดีไซน์รหัสบิล) ---
     const BillView = ({ data, setSelectedBill, setIsCreateModalOpen, searchTerm, setSearchTerm, filter, onFilterChange }) => {
         const [sortOrder, setSortOrder] = useState('newest');
         const [isSummaryOpen, setIsSummaryOpen] = useState(false);
@@ -2226,7 +2179,6 @@
           if (filter === 'overdue') res = res.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; const due = new Date(b.dueDate); due.setHours(0,0,0,0); return due < today; });
           if (searchTerm) { const lower = searchTerm.toLowerCase(); res = res.filter(b => String(b.item).toLowerCase().includes(lower) || String(b.billId).toLowerCase().includes(lower) || String(b.studentId).toLowerCase().includes(lower)); }
           
-          // ✅ เรียงตามรหัสบิล (billId)
           return sortOrder === 'newest' 
               ? [...res].sort((a, b) => String(b.billId).localeCompare(String(a.billId))) 
               : [...res].sort((a, b) => String(a.billId).localeCompare(String(b.billId)));
@@ -2297,19 +2249,24 @@
 
                 return (
                     <div key={idx} onClick={() => setSelectedBill(bill)} className="group relative bg-white rounded-2xl p-4 card-shadow border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
+                        
                         <div className="flex items-start gap-4">
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${majorIconStyle.bg} ${majorIconStyle.text}`}>
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 border border-white ${majorIconStyle.bg} ${majorIconStyle.text}`}>
                                 <Icon name={majorIconStyle.icon} weight="fill" size={24} />
                             </div>
 
                             <div className="flex-1 min-w-0 flex justify-between">
                                 <div className="flex-1 min-w-0 mr-2">
+                                    {/* 🆕 ปรับดีไซน์รหัสบิล (Bill ID) ใหม่ */}
+                                    <div className="mb-1.5">
+                                        <span className="bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold inline-flex items-center gap-1 shadow-sm">
+                                            <Icon name="hash" weight="bold" size={10}/> {bill.billId}
+                                        </span>
+                                    </div>
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded">{bill.studentId}</span>
+                                        <span className="bg-gray-50 text-gray-500 border border-gray-200 text-[10px] font-bold px-1.5 py-0.5 rounded">{bill.studentId}</span>
                                         <span className="text-sm font-bold text-gray-800 truncate">{studentName}</span>
                                     </div>
-                                    {/* ✅ โชว์รหัสบิล */}
-                                    <div className="text-[10px] font-mono text-blue-500 mb-0.5">#{bill.billId}</div>
                                     <h4 className="text-gray-600 text-sm font-medium mb-2 line-clamp-1">{bill.item}</h4>
                                     <div className="flex items-center gap-3 text-xs text-gray-400">
                                         <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg"><Icon name="calendar-blank" weight="bold" className={isOverdue ? "text-red-400" : "text-gray-400"}/><span className={isOverdue ? "text-red-500 font-bold" : ""}>{formatDate(bill.dueDate)}</span></div>
@@ -2328,6 +2285,7 @@
                                 </div>
                             </div>
                         </div>
+
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="caret-right" className="text-gray-300" size={24}/></div>
                     </div>
                 );
@@ -2340,7 +2298,7 @@
         );
     };
 
-   // --- History View ---
+   // --- History View (ปรับดีไซน์ แยกรายการและชื่อนักศึกษาชัดเจน) ---
     const HistoryView = ({ data, onDeleteHistory, onViewSlip, setSelectedBill }) => {
         const [searchTerm, setSearchTerm] = useState('');
         const [sortOrder, setSortOrder] = useState('newest');
@@ -2383,6 +2341,7 @@
         };
 
         const handleDateChange = (type, value) => { setDateFilter(prev => ({ ...prev, [type]: value })); };
+
         const isDateInRange = (targetDate, start, end) => {
             if (!targetDate) return false;
             const target = parseDateForSort(targetDate);
@@ -2395,10 +2354,18 @@
           let res = data.history;
           const getDate = (item) => item.timestamp || item.payDate;
 
-          if (isDateFilterActive) res = res.filter(h => isDateInRange(getDate(h), dateFilter.start, dateFilter.end)); 
+          if (isDateFilterActive) { 
+              res = res.filter(h => isDateInRange(getDate(h), dateFilter.start, dateFilter.end)); 
+          }
+          
           if (searchTerm) { 
               const term = searchTerm.toLowerCase(); 
-              res = res.filter(h => String(h.studentId).toLowerCase().includes(term) || String(h.name).toLowerCase().includes(term) || String(h.billId).toLowerCase().includes(term) || String(h.item).toLowerCase().includes(term)); 
+              res = res.filter(h => 
+                  String(h.studentId).toLowerCase().includes(term) || 
+                  String(h.name).toLowerCase().includes(term) || 
+                  String(h.billId).toLowerCase().includes(term) ||
+                  String(h.item).toLowerCase().includes(term)
+              ); 
           }
           
           return sortOrder === 'newest' 
@@ -2406,25 +2373,33 @@
             : [...res].sort((a, b) => parseDateForSort(getDate(a)) - parseDateForSort(getDate(b)));
         }, [data.history, searchTerm, sortOrder, dateFilter, isDateFilterActive]);
 
-        const totalAmount = useMemo(() => filteredHistory.reduce((sum, item) => sum + (Number(item.total) || Number(item.amount) || 0), 0), [filteredHistory]);
+        const totalAmount = useMemo(() => {
+            return filteredHistory.reduce((sum, item) => sum + (Number(item.total) || Number(item.amount) || 0), 0);
+        }, [filteredHistory]);
 
         return (
           <div className="space-y-5 pb-24 animate-fade-in">
             <ScrollToTopBottom />
             
+            {/* Summary Dashboard */}
             <div className="bg-white rounded-3xl p-5 card-shadow border border-gray-100 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -translate-y-10 translate-x-10 opacity-60"></div>
                 <div className="relative z-10">
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h2 className="text-gray-500 font-bold text-xs uppercase tracking-wider mb-1">ยอดรวมที่ชำระแล้ว</h2>
-                            <div className="text-3xl font-extrabold text-gray-800 tracking-tight">฿{totalAmount.toLocaleString()}</div>
+                            <div className="text-3xl font-extrabold text-gray-800 tracking-tight">
+                                ฿{totalAmount.toLocaleString()}
+                            </div>
                         </div>
                         <div className="text-right">
-                            <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm"><Icon name="list-checks" weight="bold"/> {filteredHistory.length} รายการ</div>
+                            <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm">
+                                <Icon name="list-checks" weight="bold"/> {filteredHistory.length} รายการ
+                            </div>
                         </div>
                     </div>
 
+                    {/* Search & Filter */}
                     <div className="space-y-3">
                         <div className="relative">
                             <Icon name="magnifying-glass" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
@@ -2433,8 +2408,12 @@
                         </div>
 
                         <div className="flex gap-2">
-                            <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="flex items-center gap-1 px-3 py-2 bg-gray-50 text-gray-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition"><Icon name="arrows-down-up" weight="bold"/> {sortOrder === 'newest' ? 'ใหม่ล่าสุด' : 'เก่าสุด'}</button>
-                            <button onClick={() => setIsDateFilterActive(!isDateFilterActive)} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition ${isDateFilterActive ? 'bg-primary text-white shadow-lg shadow-blue-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}><Icon name="calendar" weight={isDateFilterActive ? 'fill' : 'bold'}/> {isDateFilterActive ? 'ปิดตัวกรองวันที่' : 'กรองวันที่'}</button>
+                            <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="flex items-center gap-1 px-3 py-2 bg-gray-50 text-gray-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition">
+                                <Icon name="arrows-down-up" weight="bold"/> {sortOrder === 'newest' ? 'ใหม่ล่าสุด' : 'เก่าสุด'}
+                            </button>
+                            <button onClick={() => setIsDateFilterActive(!isDateFilterActive)} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition ${isDateFilterActive ? 'bg-primary text-white shadow-lg shadow-blue-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                                <Icon name="calendar" weight={isDateFilterActive ? 'fill' : 'bold'}/> {isDateFilterActive ? 'ปิดตัวกรองวันที่' : 'กรองวันที่'}
+                            </button>
                         </div>
 
                         <div className={`overflow-hidden transition-all duration-300 ${isDateFilterActive ? 'max-h-24 opacity-100 pt-1' : 'max-h-0 opacity-0'}`}>
@@ -2447,46 +2426,59 @@
                 </div>
             </div>
 
+            {/* List Items */}
             <div className="space-y-3">
               {filteredHistory.map((item, idx) => {
                 const studentObj = data.students.find(s => String(s.id) === String(item.studentId));
                 const studentName = studentObj ? studentObj.name : (item.name || 'ไม่พบชื่อในระบบ');
 
                 return (
-                // ✅ เพิ่ม onClick={setSelectedBill} ทำให้คลิกแล้วเปิด Modal รายละเอียด/แก้ไขได้
+                // ✅ เพิ่ม onClick ให้คลิกแล้วเปิด Modal รายละเอียดบิล
                 <div key={idx} onClick={() => setSelectedBill(item)} className="bg-white p-4 rounded-2xl card-shadow border border-gray-100 relative group hover:border-blue-200 hover:shadow-md cursor-pointer transition-all">
+                    
                     <button onClick={(e) => { e.stopPropagation(); onDeleteHistory(item.billId); }} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors z-10">
                         <Icon name="trash" size={16} weight="bold" />
                     </button>
 
                     <div className="flex gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center flex-shrink-0">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center flex-shrink-0 border border-emerald-100">
                             <Icon name="check-circle" size={24} weight="fill"/>
                         </div>
 
                         <div className="flex-1 min-w-0 pr-8">
-                            <div className="flex justify-between items-baseline mb-1">
-                                <h4 className="font-bold text-gray-800 text-sm truncate">{item.item}</h4>
-                            </div>
-                            
-                            {/* ✅ ปรับ UI ชื่อ/รหัสนักศึกษาให้อยู่คนละบรรทัด */}
-                            <div className="flex flex-col mb-2">
-                                <span className="text-sm font-bold text-gray-700 truncate">{studentName}</span>
-                                <span className="text-[10px] text-gray-400 font-mono mt-0.5">รหัส: {item.studentId}</span>
+                            {/* 🆕 รหัสบิล */}
+                            <div className="mb-1.5">
+                                <span className="bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold inline-flex items-center gap-1 shadow-sm">
+                                    <Icon name="hash" weight="bold" size={10}/> {item.billId}
+                                </span>
                             </div>
 
-                            <div className="flex items-end justify-between border-t border-dashed border-gray-100 pt-2 mt-2">
+                            {/* 🆕 รายการ (ใหญ่และเด่นชัด) */}
+                            <h4 className="font-extrabold text-gray-800 text-sm truncate mb-3 leading-snug">{item.item}</h4>
+                            
+                            {/* 🆕 กรอบชื่อนักศึกษา (แยกให้ชัดเจน) */}
+                            <div className="bg-gray-50 rounded-xl p-2 border border-gray-100 mb-3 flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0 shadow-sm">
+                                    {String(studentName).charAt(0)}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-bold text-gray-700 truncate">{studentName}</p>
+                                    <p className="text-[10px] font-mono text-gray-400">{item.studentId}</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-end justify-between border-t border-dashed border-gray-200 pt-3">
                                 <div className="text-[10px] text-gray-400 flex items-center gap-1 font-bold">
                                     <Icon name="clock" weight="fill" className="text-gray-300"/> 
                                     {formatDateTime(item.timestamp || item.payDate)}
                                 </div>
                                 <div className="flex items-center gap-3">
                                     {item.slipUrl && (
-                                        <button onClick={(e) => { e.stopPropagation(); onViewSlip(item.slipUrl); }} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 transition flex items-center gap-1">
-                                            <Icon name="image" weight="bold"/> สลิป
+                                        <button onClick={(e) => { e.stopPropagation(); onViewSlip(item.slipUrl); }} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 transition flex items-center gap-1 shadow-sm border border-blue-100">
+                                            <Icon name="image" weight="fill"/> สลิป
                                         </button>
                                     )}
-                                    <span className="font-bold text-emerald-600 text-lg">฿{Number(item.total || item.amount).toLocaleString()}</span>
+                                    <span className="font-bold text-emerald-600 text-xl tracking-tight">฿{Number(item.total || item.amount).toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
