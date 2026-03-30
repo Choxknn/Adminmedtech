@@ -994,7 +994,6 @@
       );
     };
 
-    
     // ==========================================
     // 🟢 MAIN APP COMPONENT (เชื่อมต่อ Firestore 100%)
     // ==========================================
@@ -1040,7 +1039,7 @@
       const [deleteTarget, setDeleteTarget] = useState(null); 
       const [notifyEnabled, setNotifyEnabled] = useState(true); 
 
-      // ✅ 1. ฟังการเปลี่ยนแปลงจาก Firebase แบบ Real-time
+      // ✅ 1. ใช้ Firestore .onSnapshot แทนการ fetchData แบบเดิม 
       useEffect(() => { 
         if (!isLoggedIn) return;
         setLoading(true);
@@ -1068,62 +1067,40 @@
 
       useEffect(() => { if (!selectedBill) setIsEditing(false); else setNotifyEnabled(true); }, [selectedBill]);
 
-      const finishAction = () => {
-          setProcessingAction(null);
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 1500);
-      };
-
+      const finishAction = () => { setProcessingAction(null); setShowSuccess(true); setTimeout(() => setShowSuccess(false), 1500); };
       const uiData = { students, bills, history, amount: { qrCodes }, announcement, systemStatus, finance: financeLogs };
       const uiOrderData = { systemStatus: orderSystemStatus, products, orders };
 
       // ==========================================
-      // ✅ 2. ACTIONS (Firebase Firestore/Storage)
+      // ✅ ACTIONS (Firebase Firestore/Storage)
       // ==========================================
+      const confirmToggleSystem = async (targetStatus) => {
+          setProcessingAction('TOGGLING_SYSTEM');
+          try { await db.collection('config').doc('system').set({ maintenanceMode: targetStatus }, { merge: true }); finishAction(); } 
+          catch (err) { setProcessingAction(null); throw err; }
+      };
 
       const handleSaveFinance = async (formData) => {
           setProcessingAction('SAVE_FINANCE');
           try {
-              let finalReceiptUrl = formData.receiptUrl || "";
-              let finalSlipUrl = formData.slipUrl || "";
-
+              let finalReceiptUrl = formData.receiptUrl || ""; let finalSlipUrl = formData.slipUrl || "";
               if (formData.receiptFile) finalReceiptUrl = await uploadToStorage(formData.receiptFile, 'finance', `RECEIPT-${Date.now()}.jpg`);
               if (formData.slipFile) finalSlipUrl = await uploadToStorage(formData.slipFile, 'finance', `SLIP-${Date.now()}.jpg`);
-              if (formData.isReceiptDeleted) finalReceiptUrl = "";
-              if (formData.isSlipDeleted) finalSlipUrl = "";
+              if (formData.isReceiptDeleted) finalReceiptUrl = ""; if (formData.isSlipDeleted) finalSlipUrl = "";
 
-              const logData = {
-                  date: formData.date, project: formData.project, item: formData.item, type: formData.type,
-                  amount: Number(formData.amount), person: formData.person, receiptUrl: finalReceiptUrl, slipUrl: finalSlipUrl,
-                  timestamp: firebase.firestore.FieldValue.serverTimestamp()
-              };
-
+              const logData = { date: formData.date, project: formData.project, item: formData.item, type: formData.type, amount: Number(formData.amount), person: formData.person, receiptUrl: finalReceiptUrl, slipUrl: finalSlipUrl, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
               const newId = formData.id || `FIN-${Date.now()}`;
               await db.collection('financeLogs').doc(newId).set({ id: newId, ...logData }, { merge: true });
               finishAction();
           } catch (err) { alert('Error: ' + err.message); setProcessingAction(null); }
       };
 
-      const handleDeleteFinance = async (id) => {
-          setProcessingAction('DELETE');
-          try { await db.collection('financeLogs').doc(id).delete(); finishAction(); } 
-          catch(err) { alert(err.message); setProcessingAction(null); }
-      };
+      const handleDeleteFinance = async (id) => { setProcessingAction('DELETE'); try { await db.collection('financeLogs').doc(id).delete(); finishAction(); } catch(err) { alert(err.message); setProcessingAction(null); } };
 
       const handleToggleOrderSystem = async (status) => { 
           setProcessingAction('TOGGLE_SYSTEM'); 
           try { await db.collection('config').doc('system').set({ orderSystemStatus: status ? 'ON' : 'OFF' }, { merge: true }); finishAction(); } 
           catch(e) { alert("Error"); setProcessingAction(null); }
-      };
-
-      // ✅ แก้ให้เรียกเข้า Firebase ทันทีแบบไม่ต้องผ่าน apiCall()
-      const confirmToggleSystem = async (targetStatus) => {
-          setProcessingAction('TOGGLING_SYSTEM');
-          try { 
-              await db.collection('config').doc('system').set({ maintenanceMode: targetStatus }, { merge: true }); 
-              finishAction(); 
-          } 
-          catch (err) { setProcessingAction(null); throw err; } // ส่ง throw ให้ UI ดัก Error
       };
 
       const handleSaveProduct = async (form) => { 
@@ -1150,27 +1127,19 @@
       };
 
       const handleUpdateOrderStatus = async (id, status) => { 
-          try {
-              const order = orders.find(o => o.orderId === id);
-              if (order) await db.collection('users').doc(order.studentId).collection('orders').doc(id).update({ status });
-          } catch (err) { alert('Error: ' + err.message); }
+          try { const order = orders.find(o => o.orderId === id); if (order) await db.collection('users').doc(order.studentId).collection('orders').doc(id).update({ status }); } 
+          catch (err) { alert('Error: ' + err.message); }
       };
       
       const handleEditOrder = async (formData) => {
           setProcessingAction('EDIT_ORDER');
-          try {
-              const order = orders.find(o => o.orderId === formData.orderId);
-              await db.collection('users').doc(order.studentId).collection('orders').doc(formData.orderId).update({ items: formData.items, price: Number(formData.price), status: formData.status });
-              finishAction();
-          } catch (err) { alert(err.message); setProcessingAction(null); }
+          try { const order = orders.find(o => o.orderId === formData.orderId); await db.collection('users').doc(order.studentId).collection('orders').doc(formData.orderId).update({ items: formData.items, price: Number(formData.price), status: formData.status }); finishAction(); } 
+          catch (err) { alert(err.message); setProcessingAction(null); }
       };
 
       const confirmDelete = async () => { 
-          if (!deleteTarget) return; 
-          setProcessingAction('DELETE'); 
-          setIsDeleteConfirmOpen(false); 
+          if (!deleteTarget) return; setProcessingAction('DELETE'); setIsDeleteConfirmOpen(false); 
           const { id, type } = deleteTarget;
-          
           try {
               if (type === 'ORDER') { const order = orders.find(o => o.orderId === id); await db.collection('users').doc(order.studentId).collection('orders').doc(id).delete(); } 
               else if (type === 'PRODUCT') { await db.collection('products').doc(id).delete(); } 
@@ -1178,60 +1147,16 @@
               else if (type === 'HISTORY') { const hist = history.find(h => h.billId === id || h.historyId === id); await db.collection('users').doc(hist.studentId).collection('history').doc(hist.historyId || id).delete(); } 
               else if (type === 'STUDENT') { await db.collection('users').doc(id).delete(); } 
               else if (type === 'QR') { const newQrList = qrCodes.filter(q => q.url !== id); await db.collection('config').doc('qrMap').set({ list: newQrList }, { merge: true }); } 
-              
               finishAction(); setDeleteTarget(null);
           } catch (err) { alert(err.message); setProcessingAction(null); }
       };
 
-      // ✅ แก้ไข: ลบประกาศไม่ต้องไปเรียก confirmDelete ให้เรียกแยกเลย
       const handleDeleteAnnouncementClick = async () => { 
           if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) {
               setProcessingAction('ANNOUNCE'); 
-              try {
-                  await db.collection('config').doc('system').set({ announcement: '' }, { merge: true });
-                  setIsAnnounceModalOpen(false); finishAction();
-              } catch (err) { alert('Error: ' + err.message); setProcessingAction(null); }
+              try { await db.collection('config').doc('system').set({ announcement: '' }, { merge: true }); setIsAnnounceModalOpen(false); finishAction(); } 
+              catch (err) { alert('Error: ' + err.message); setProcessingAction(null); }
           }
-      };
-
-      const handleCreateBill = async (formData) => { 
-          setProcessingAction('CREATE_BILL'); 
-          try {
-              const targetIds = formData.studentIds || [formData.studentId];
-              const batch = db.batch();
-              
-              targetIds.forEach(studentId => {
-                  const suffix = String(studentId).slice(-4).padEnd(4, '0');
-                  const randomPart = Math.floor(1000 + Math.random() * 9000);
-                  const billId = `B${suffix}-${randomPart}`;
-                  const ref = db.collection('users').doc(String(studentId)).collection('bills').doc(billId);
-                  batch.set(ref, {
-                      billId, studentId: String(studentId), item: formData.item, amount: Number(formData.amount),
-                      discount: Number(formData.discount || 0), dueDate: formData.dueDate, finePerDay: Number(formData.finePerDay || 0),
-                      maxFine: Number(formData.maxFine || 0), status: 'ค้างชำระ', createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                  });
-              });
-              
-              await batch.commit();
-              if (formData.notify !== false) await notifyGas('createBillNotify', { ...formData, targetIds }); // ยิงไป GAS เพื่อแจ้งเตือน
-              setIsCreateModalOpen(false); finishAction();
-          } catch (err) { alert(err.message); setProcessingAction(null); }
-      };
-
-      const handleEditBill = async (formData) => { 
-          setProcessingAction('EDITING'); 
-          try {
-              let newSlipUrl = formData.slipUrl;
-              if (formData.isSlipDeleted) newSlipUrl = '';
-              if (formData.slipFile) newSlipUrl = await uploadToStorage(formData.slipFile, 'slips', `SLIP-${formData.billId}-${Date.now()}.jpg`);
-
-              await db.collection('users').doc(formData.studentId).collection('bills').doc(formData.billId).update({
-                  item: formData.item, amount: Number(formData.amount), discount: Number(formData.discount || 0),
-                  dueDate: formData.dueDate, finePerDay: Number(formData.finePerDay || 0), maxFine: Number(formData.maxFine || 0),
-                  slipUrl: newSlipUrl, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-              });
-              setSelectedBill(null); finishAction();
-          } catch (err) { alert(err.message); setProcessingAction(null); }
       };
 
       const handleSaveAnnouncement = async () => { 
@@ -1250,70 +1175,63 @@
 
       const handleSaveStudent = async (formData) => { 
           setProcessingAction('SAVE_STUDENT'); 
-          try {
-              await db.collection('users').doc(formData.id).set({
-                  id: formData.id, name: formData.name, password: formData.password, lineId: formData.userId, permissions: formData.permissions
-              }, { merge: true });
-              setIsStudentModalOpen(false); setSelectedStudent(null); finishAction();
-          } catch(err) { setErrorMessage(err.message); setIsErrorModalOpen(true); setProcessingAction(null); }
+          try { await db.collection('users').doc(formData.id).set({ id: formData.id, name: formData.name, password: formData.password, lineId: formData.userId, permissions: formData.permissions }, { merge: true }); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); } 
+          catch(err) { setErrorMessage(err.message); setIsErrorModalOpen(true); setProcessingAction(null); }
       };
 
-      // Qr Code Add/Update
       const handleAddQr = async (qrData) => {
-          return new Promise(async (resolve, reject) => {
-              try {
-                  let url = qrData.oldUrl || '';
-                  if (qrData.fileBase64) url = await uploadToStorage(qrData.fileBase64, 'qrCodes', `QR-${Date.now()}.jpg`);
-                  
-                  let newList = [...qrCodes];
-                  if (qrData.oldUrl) { newList = newList.map(q => q.url === qrData.oldUrl ? { url, amount: qrData.newAmount } : q); } 
-                  else { newList.push({ url, amount: qrData.newAmount }); }
-                  
-                  await db.collection('config').doc('qrMap').set({ list: newList }, { merge: true });
-                  finishAction();
-                  resolve();
-              } catch(e) { reject(e); }
-          });
+          setIsQrModalOpen(false); setProcessingAction('QR');
+          try {
+              let url = qrData.oldUrl || ''; if (qrData.fileBase64) url = await uploadToStorage(qrData.fileBase64, 'qrCodes', `QR-${Date.now()}.jpg`);
+              let newList = [...qrCodes]; if (qrData.oldUrl) { newList = newList.map(q => q.url === qrData.oldUrl ? { url, amount: qrData.newAmount } : q); } else { newList.push({ url, amount: qrData.newAmount }); }
+              await db.collection('config').doc('qrMap').set({ list: newList }, { merge: true }); finishAction();
+          } catch(e) { alert(e.message); setProcessingAction(null); }
+      };
+
+      const handleCreateBill = async (formData) => { 
+          setProcessingAction('CREATE_BILL'); 
+          try {
+              const targetIds = formData.studentIds || [formData.studentId];
+              const batch = db.batch();
+              targetIds.forEach(studentId => {
+                  const suffix = String(studentId).slice(-4).padEnd(4, '0'); const randomPart = Math.floor(1000 + Math.random() * 9000); const billId = `B${suffix}-${randomPart}`;
+                  const ref = db.collection('users').doc(String(studentId)).collection('bills').doc(billId);
+                  batch.set(ref, { billId, studentId: String(studentId), item: formData.item, amount: Number(formData.amount), discount: Number(formData.discount || 0), dueDate: formData.dueDate, finePerDay: Number(formData.finePerDay || 0), maxFine: Number(formData.maxFine || 0), status: 'ค้างชำระ', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              });
+              await batch.commit();
+              if (formData.notify !== false) await notifyGas('createBillNotify', { ...formData, targetIds }); 
+              setIsCreateModalOpen(false); finishAction();
+          } catch (err) { alert(err.message); setProcessingAction(null); }
+      };
+
+      const handleEditBill = async (formData) => { 
+          setProcessingAction('EDITING'); 
+          try {
+              let newSlipUrl = formData.slipUrl; if (formData.isSlipDeleted) newSlipUrl = ''; if (formData.slipFile) newSlipUrl = await uploadToStorage(formData.slipFile, 'slips', `SLIP-${formData.billId}-${Date.now()}.jpg`);
+              await db.collection('users').doc(formData.studentId).collection('bills').doc(formData.billId).update({ item: formData.item, amount: Number(formData.amount), discount: Number(formData.discount || 0), dueDate: formData.dueDate, finePerDay: Number(formData.finePerDay || 0), maxFine: Number(formData.maxFine || 0), slipUrl: newSlipUrl, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+              setSelectedBill(null); finishAction();
+          } catch (err) { alert(err.message); setProcessingAction(null); }
       };
 
       const handleUpdateBill = async (status) => { 
-          if(!selectedBill) return; 
-          let actionType = 'LOADING'; 
-          if (status === 'ชำระแล้ว') actionType = 'APPROVE'; 
-          if (status === '') actionType = 'REJECT'; 
-          if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; 
-          setProcessingAction(actionType); 
-
+          if(!selectedBill) return; let actionType = 'LOADING'; if (status === 'ชำระแล้ว') actionType = 'APPROVE'; if (status === '') actionType = 'REJECT'; if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; setProcessingAction(actionType); 
           try {
               const billRef = db.collection('users').doc(selectedBill.studentId).collection('bills').doc(selectedBill.billId);
               await billRef.update({ status, payDate: status === 'ชำระแล้ว' ? new Date().toISOString() : '' });
-
               if (status === 'ชำระแล้ว') {
                   const histRef = db.collection('users').doc(selectedBill.studentId).collection('history').doc(selectedBill.billId);
-                  const fine = calculateFine(selectedBill);
-                  const netTotal = Number(selectedBill.amount) + fine - Number(selectedBill.discount || 0);
-                  const student = students.find(s => s.id === selectedBill.studentId);
-
-                  await histRef.set({
-                      billId: selectedBill.billId, studentId: selectedBill.studentId, name: student ? student.name : 'Unknown',
-                      item: selectedBill.item, amount: Number(selectedBill.amount), total: netTotal, status: 'ชำระแล้ว',
-                      payDate: new Date().toISOString(), slipUrl: selectedBill.slipUrl || ''
-                  });
+                  const fine = calculateFine(selectedBill); const netTotal = Number(selectedBill.amount) + fine - Number(selectedBill.discount || 0); const student = students.find(s => s.id === selectedBill.studentId);
+                  await histRef.set({ billId: selectedBill.billId, studentId: selectedBill.studentId, name: student ? student.name : 'Unknown', item: selectedBill.item, amount: Number(selectedBill.amount), total: netTotal, status: 'ชำระแล้ว', payDate: new Date().toISOString(), slipUrl: selectedBill.slipUrl || '' });
               }
-
               if (notifyEnabled) await notifyGas('updateBillStatusNotify', { billId: selectedBill.billId, studentId: selectedBill.studentId, status });
               setSelectedBill(null); finishAction();
           } catch(err) { alert(err.message); setProcessingAction(null); }
       };
 
       const handleResetBill = async () => { 
-          setIsResetConfirmOpen(false); 
-          if (!selectedBill) return; 
-          setProcessingAction('RESET'); 
-          try {
-              await db.collection('users').doc(selectedBill.studentId).collection('bills').doc(selectedBill.billId).update({ status: '', payDate: '', slipUrl: '' });
-              setSelectedBill(null); finishAction();
-          } catch(err) { alert(err.message); setProcessingAction(null); }
+          setIsResetConfirmOpen(false); if (!selectedBill) return; setProcessingAction('RESET'); 
+          try { await db.collection('users').doc(selectedBill.studentId).collection('bills').doc(selectedBill.billId).update({ status: '', payDate: '', slipUrl: '' }); setSelectedBill(null); finishAction(); } 
+          catch(err) { alert(err.message); setProcessingAction(null); }
       };
 
       // Notifications (ผ่าน GAS)
@@ -1341,6 +1259,7 @@
           if (deleteTarget?.type === 'QR') return "คุณต้องการลบ QR Code นี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'PRODUCT') return "คุณต้องการลบสินค้านี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'ORDER') return "คุณต้องการลบออเดอร์นี้ใช่หรือไม่?"; 
+          if (deleteTarget?.type === 'ANNOUNCEMENT') return "คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?";
           return "คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"; 
       };
 
@@ -1399,17 +1318,53 @@
               );
             })}
           </nav>
-
-          <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={isEditing ? "แก้ไขข้อมูลบิล" : "รายละเอียดบิล"} hideClose={!!processingAction} zIndex="z-[60]">
-            {/* เนื้อหา Modal (ตัดเพื่อประหยัดหน้าจอ แต่เหมือนโค้ดต้นฉบับ 100%) */}
-          </Modal>
-
+          
           <ConfirmModal isOpen={isDeleteConfirmOpen} onClose={() => !processingAction && setIsDeleteConfirmOpen(false)} onConfirm={confirmDelete} title={deleteTarget?.type === 'HISTORY' ? "ยืนยันลบประวัติ" : (deleteTarget?.type === 'STUDENT' ? "ยืนยันลบนักศึกษา" : (deleteTarget?.type === 'QR' ? "ยืนยันลบ QR Code" : (deleteTarget?.type === 'PRODUCT' ? "ยืนยันลบสินค้า" : (deleteTarget?.type === 'ORDER' ? "ยืนยันลบออเดอร์" : (deleteTarget?.type === 'ANNOUNCEMENT' ? "ยืนยันลบประกาศ" : "ยืนยันการลบบิล")))))} message={getConfirmMessage()} loading={processingAction === 'DELETE'} />
-          
-          <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={uiData.amount?.qrCodes || []} onSave={handleAddQr} onDelete={handleDeleteQrClick} loading={processingAction === 'QR'} initialEditQr={editingQrData} />
-          
-          <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
-          <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
+
+        </div>
+      );
+    };
+
+    const LoginScreen = ({ onLogin }) => {
+      const [pin, setPin] = useState('');
+      const [error, setError] = useState(false);
+      const [loading, setLoading] = useState(false);
+
+      useEffect(() => {
+          const handleKeyDown = (e) => {
+              if (loading) return;
+              if (e.key >= '0' && e.key <= '9') setPin(prev => prev.length < 6 ? prev + e.key : prev);
+              else if (e.key === 'Backspace') setPin(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [loading]);
+
+      useEffect(() => {
+          if (pin.length === 6) {
+              setLoading(true);
+              db.collection('config').doc('system').get().then(doc => {
+                  const correctPin = doc.exists && doc.data().adminPin ? String(doc.data().adminPin) : '000000';
+                  if (pin === correctPin) onLogin();
+                  else { setError(true); setLoading(false); setTimeout(() => { setPin(''); setError(false); }, 600); }
+              }).catch(() => { setError(true); setLoading(false); setTimeout(() => { setPin(''); setError(false); }, 600); });
+          }
+      }, [pin, onLogin]);
+
+      return (
+        <div className="fixed inset-0 z-[1000] bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+           <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none"><div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 opacity-10 rounded-full blur-3xl animate-pulse"></div><div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 opacity-10 rounded-full blur-3xl animate-pulse delay-700"></div></div>
+           <div className="w-full max-w-sm relative z-10 flex flex-col items-center animate-scale-in">
+              <div className="mb-8 text-center"><div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl mb-4 border border-white/10"><Icon name="lock-key" weight="fill" size={36} /></div><h1 className="text-2xl font-bold text-white tracking-wider">ใส่รหัส PIN</h1><p className="text-blue-200 text-xs mt-1 font-medium">สามารถพิมพ์ตัวเลขจากคีย์บอร์ดได้เลย</p></div>
+              <div className={`flex gap-4 mb-8 transition-transform duration-300 ${error ? 'animate-shake' : ''}`}>{[...Array(6)].map((_, i) => (<div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${i < pin.length ? 'bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] scale-110' : 'bg-white/20 scale-100'}`}></div>))}</div>
+              <div className="h-6 mb-2">{error && <p className="text-red-400 text-sm font-bold animate-fade-in flex items-center gap-1"><Icon name="warning-circle" weight="fill"/> รหัสไม่ถูกต้อง</p>}</div>
+              <div className="grid grid-cols-3 gap-4 w-full px-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (<button key={num} onClick={() => { if (pin.length < 6) setPin(prev => prev + num); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">{num}</button>))}
+                  <div></div>
+                  <button onClick={() => { if (pin.length < 6) setPin(prev => prev + 0); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">0</button>
+                  <button onClick={() => { if(pin.length>0) setPin(p=>p.slice(0,-1)); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center"><Icon name="backspace" weight="bold" size={28} /></button>
+              </div>
+           </div>
         </div>
       );
     };
