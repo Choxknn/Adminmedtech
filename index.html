@@ -225,7 +225,29 @@
                     const billData = billSnap.data();
 
                     if (status === 'ชำระแล้ว') {
-                        const histData = { ...billData, payDate: new Date().toISOString(), total: (Number(billData.amount) - Number(billData.discount||0)) };
+                        // ✅ 1. คำนวณค่าปรับ (Fine) แบบเรียลไทม์
+                        let fine = 0;
+                        if (billData.dueDate) {
+                            const due = new Date(billData.dueDate); due.setHours(0, 0, 0, 0);
+                            const now = new Date(); now.setHours(0, 0, 0, 0);
+                            if (now > due) {
+                                const diffTime = now - due;
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                fine = diffDays * (Number(billData.finePerDay) || 0);
+                                if (billData.maxFine && fine > Number(billData.maxFine)) {
+                                    fine = Number(billData.maxFine);
+                                }
+                            }
+                        }
+
+                        // ✅ 2. รวมยอดสุทธิ (เงินต้น - ส่วนลด + ค่าปรับ)
+                        const netTotal = (Number(billData.amount) || 0) - (Number(billData.discount) || 0) + fine;
+
+                        const histData = { 
+                            ...billData, 
+                            payDate: new Date().toISOString(), 
+                            total: netTotal // บันทึกยอดที่บวกค่าปรับและหักส่วนลดแล้ว
+                        };
                         await db.collection('users').doc(String(studentId)).collection('history').doc(String(billId)).set(histData);
                     }
 
@@ -1896,12 +1918,15 @@
                                 {/* Details List */}
                                 <div className="space-y-0 mt-4 border border-gray-100 rounded-2xl overflow-hidden">
                                     
-                                    {/* ✅ แก้ไขตรงนี้: เพิ่มรหัสนักศึกษาและชื่อนักศึกษา */}
+                                    {/* ✅ แก้ไขการแสดงผลชื่อและรหัสใน Modal รายละเอียดบิล */}
                                     <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                                         <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="user" weight="bold"/> นักศึกษา</span>
                                         <span className="font-medium text-sm text-right">
                                             {viewingBill.studentId} 
-                                            {student?.name && <><br/><span className="text-xs text-gray-500">{student.name}</span></>}
+                                            <br/>
+                                            <span className="text-primary text-xs">
+                                                {data.students?.find(s => String(s.id) === String(viewingBill.studentId))?.name || 'ไม่พบชื่อนักศึกษา'}
+                                            </span>
                                         </span>
                                     </div>
 
@@ -2339,7 +2364,8 @@
             <div className="space-y-3">
               {filteredBills.map((bill, idx) => {
                 const fine = calculateFine(bill); 
-                const studentName = data.students.find(s => s.id === bill.studentId)?.name || ''; 
+                // ✅ แปลง ID เป็น String เสมอก่อนเอาไปเทียบ เพื่อป้องกัน Type Error
+                const studentName = data.students.find(s => String(s.id) === String(bill.studentId))?.name || 'ไม่พบชื่อนักศึกษา'; 
                 const isOverdue = (bill.dueDate && new Date(bill.dueDate) < new Date() && bill.status !== 'ชำระแล้ว');
                 const netTotal = Number(bill.amount) + fine - Number(bill.discount || 0);
                 
@@ -2543,7 +2569,12 @@
 
             {/* 2. List Items */}
             <div className="space-y-3">
-              {filteredHistory.map((item, idx) => (
+              {filteredHistory.map((item, idx) => {
+                // ✅ ดึงชื่อจาก users (data.students) แบบเจาะจง String
+                const studentObj = data.students.find(s => String(s.id) === String(item.studentId));
+                const studentName = studentObj ? studentObj.name : (item.name || 'ไม่พบชื่อในระบบ');
+
+                return (
                 <div key={idx} className="bg-white p-4 rounded-2xl card-shadow border border-gray-100 relative group hover:border-blue-200 transition-all">
                     <button onClick={() => onDeleteHistory(item.billId)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors z-10">
                         <Icon name="trash" size={16} weight="bold" />
@@ -2560,14 +2591,14 @@
                             </div>
                             
                             <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded-md truncate max-w-[120px]">{item.name}</span>
+                                {/* ✅ แสดงชื่อที่ดึงมา */}
+                                <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded-md truncate max-w-[120px]">{studentName}</span>
                                 <span className="text-[10px] text-gray-400 font-mono">#{item.studentId}</span>
                             </div>
 
                             <div className="flex items-end justify-between border-t border-dashed border-gray-100 pt-2 mt-2">
                                 <div className="text-xs text-gray-400 flex items-center gap-1 font-medium">
                                     <Icon name="clock" weight="fill" className="text-gray-300"/> 
-                                    {/* ✅ เรียกใช้ฟังก์ชันที่แก้แล้ว (ใช้ timestamp ก่อน ถ้าไม่มีใช้ payDate) */}
                                     {formatDateTime(item.timestamp || item.payDate)}
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -2582,7 +2613,7 @@
                         </div>
                     </div>
                 </div>
-              ))}
+              )})}
 
               {filteredHistory.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-gray-300">
@@ -3778,6 +3809,156 @@
 
           </div>
         );
+    };
+
+    // --- QR Scanner Modal (ส่วนที่หายไป) ---
+    const QRScannerModal = ({ isOpen, onClose, onScan }) => {
+      useScrollLock(isOpen);
+      useEffect(() => {
+        if (!isOpen) return;
+        let html5QrcodeScanner;
+        
+        const timeout = setTimeout(() => { 
+            try { 
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader", 
+                    { 
+                        fps: 10, 
+                        qrbox: { width: 250, height: 250 },
+                        aspectRatio: 1.0,
+                        showTorchButtonIfSupported: true 
+                    }, 
+                    false
+                ); 
+                
+                html5QrcodeScanner.render((decodedText) => { 
+                    onScan(decodedText); 
+                    html5QrcodeScanner.clear().catch(err => console.error(err)); 
+                    onClose(); 
+                }, (errorMessage) => {
+                    // scanning...
+                }); 
+            } catch (e) {
+                console.error("Scanner Error", e);
+            } 
+        }, 100);
+
+        return () => { 
+            clearTimeout(timeout); 
+            if (html5QrcodeScanner) { 
+                try { html5QrcodeScanner.clear(); } catch(e){} 
+            } 
+        };
+      }, [isOpen]);
+
+      if (!isOpen) return null;
+
+      return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+            <style>{`
+                #reader { border: none !important; }
+                #reader button { 
+                    background-color: #2563EB !important; 
+                    color: white !important; 
+                    padding: 8px 16px !important; 
+                    border-radius: 8px !important; 
+                    border: none !important; 
+                    margin-top: 10px !important;
+                    font-weight: bold !important;
+                    cursor: pointer !important;
+                }
+                #reader button:hover { background-color: #1D4ED8 !important; }
+                #reader select {
+                    padding: 5px !important;
+                    border: 1px solid #ccc !important;
+                    border-radius: 5px !important;
+                    margin-bottom: 10px !important;
+                    color: black !important;
+                    background: white !important;
+                }
+                #reader span, #reader a { color: #4b5563 !important; }
+            `}</style>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+                <button onClick={onClose} className="absolute -top-4 -right-4 w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white shadow-lg hover:bg-red-600 z-10 transition-transform hover:scale-110">
+                    <Icon name="x" weight="bold" size={20}/>
+                </button>
+                <h3 className="text-center font-bold text-gray-800 mb-4 text-lg">สแกน QR Code</h3>
+                <div id="reader" className="rounded-xl overflow-hidden bg-gray-100 min-h-[300px]"></div>
+                <p className="text-center text-xs text-gray-400 mt-4">หากไม่เห็นกล้อง กรุณากดปุ่ม "Request Camera Permissions" สีฟ้าด้านบน</p>
+            </div>
+        </div>,
+        document.body
+      );
+    };
+
+    // --- Edit Order Modal ---
+    const EditOrderModal = ({ isOpen, onClose, order, onSave, loading, zIndex = "z-[110]" }) => {
+      const [form, setForm] = useState({ orderId: '', items: '', price: '', status: '' });
+      
+      useEffect(() => { 
+          if (order && isOpen) { 
+              setForm({ 
+                  orderId: order.orderId, 
+                  items: order.items, 
+                  price: order.price, 
+                  status: order.status 
+              }); 
+          } 
+      }, [order, isOpen]);
+      
+      return (
+        <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขออเดอร์" zIndex={zIndex}>
+           <div className="space-y-4">
+              <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 mb-2">
+                  <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">รหัสออเดอร์:</span>
+                      <span className="font-bold text-gray-800">{form.orderId}</span>
+                  </div>
+              </div>
+              <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">รายการสินค้า</label>
+                  <textarea 
+                      value={form.items} 
+                      onChange={e => setForm({...form, items: e.target.value})} 
+                      className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary min-h-[100px] text-sm" 
+                      placeholder="แก้ไขรายการสินค้า..."
+                  ></textarea>
+              </div>
+              <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">ราคารวม (บาท)</label>
+                  <input 
+                      type="number" 
+                      value={form.price} 
+                      onChange={e => setForm({...form, price: e.target.value})} 
+                      className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary font-bold text-gray-800"
+                  />
+              </div>
+              <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">สถานะ</label>
+                  <select 
+                      value={form.status} 
+                      onChange={e => setForm({...form, status: e.target.value})} 
+                      className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary bg-white"
+                  >
+                      <option value="รอตรวจสอบ">รอตรวจสอบ</option>
+                      <option value="ชำระแล้ว">ชำระแล้ว</option>
+                      <option value="อยู่ระหว่างสั่งซื้อ">อยู่ระหว่างสั่งซื้อ</option>
+                      <option value="อยู่ระหว่างผลิต">อยู่ระหว่างผลิต</option>
+                      <option value="รอรับของ">รอรับของ</option>
+                      <option value="รับแล้ว">รับแล้ว</option>
+                      <option value="ยกเลิก">ยกเลิก</option>
+                  </select>
+              </div>
+              <button 
+                  onClick={() => onSave(form)} 
+                  disabled={loading} 
+                  className="w-full py-3 mt-2 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                  {loading ? <><Icon name="spinner" className="animate-spin"/> กำลังบันทึก...</> : 'บันทึกการแก้ไข'}
+              </button>
+           </div>
+        </Modal>
+      );
     };
     
     // ==========================================
