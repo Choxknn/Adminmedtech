@@ -4030,8 +4030,9 @@
           try {
               const newMainUrls = [];
               if(form.imageFiles && form.imageFiles.length > 0) {
-                  for(let i=0; i<form.imageFiles.length; i++){ newMainUrls.push(await uploadToStorage(form.imageFiles[i], 'products', `PROD-${Date.now()}-${i}.jpg`)); }
-              }
+  const uploadPromises = form.imageFiles.map((base64, i) => uploadToStorage(base64, 'products', `PROD-${Date.now()}-${i}.jpg`));
+  newMainUrls.push(...await Promise.all(uploadPromises));
+}
               const finalImageString = [...(form.image?form.image.split(' | ').filter(Boolean):[]), ...newMainUrls].join(' | ');
 
               const newSizeUrls = [];
