@@ -1976,17 +1976,13 @@
         );
     };
 
-    // --- Dashboard View (Updated: Redesign & Compact Announcement) ---
-    const DashboardView = ({ data, setData, setActiveTab, setAnnounceForm, setIsAnnounceModalOpen, setIsQrModalOpen, onOpenQrManager, onEditQr, onGoToOverdue, onGoToOverdueBills, onGoToUnpaidBills, processingAction, setProcessingAction, onViewImage }) => {
+   // --- Dashboard View (โล่งขึ้นเพราะย้ายไป Settings แล้ว) ---
+    const DashboardView = ({ data, setActiveTab, onGoToOverdueBills, onGoToUnpaidBills }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
             const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); 
             return { start: formatDateForInput(start), end: formatDateForInput(end) };
         });
-
-        const [confirmModal, setConfirmModal] = useState({ isOpen: false, targetStatus: '' });
-        const [isToggling, setIsToggling] = useState(false); 
-        const [successModal, setSuccessModal] = useState(false);
 
         const handleDateChange = (type, value) => { setDateFilter(prev => ({ ...prev, [type]: value })); };
 
@@ -1998,58 +1994,11 @@
         const pendingBillsCount = useMemo(() => data.bills.filter(b => b.status === 'รอตรวจสอบ').length, [data.bills]);
         const allUnpaidCount = useMemo(() => data.bills.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ').length, [data.bills]);
         const allOverdueCount = useMemo(() => { const today = new Date(); today.setHours(0,0,0,0); return data.bills.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; return new Date(b.dueDate) < today; }).length; }, [data.bills]);
-        const qrCodes = data.amount.qrCodes || [];
-        const isMaintenance = data.systemStatus === 'ON'; 
-      const [mMsg, setMMsg] = useState(data.config?.maintenanceMsg || '');
-
-        const handleSaveMsg = () => {
-            setProcessingAction('SAVING_CONFIG');
-            db.collection('config').doc('system').set({ maintenanceMsg: mMsg }, { merge: true })
-              .then(() => { finishAction(); });
-        };
-
-        // ✅ 1. ดึงข้อความมาตัดช่องว่างซ้าย-ขวาออกก่อน
-        const rawAnnounce = String(data.announcement || '').trim();
-        
-        // ✅ 2. เช็คว่าเป็นลิงก์หรือไม่
-        const isImageAnnounce = rawAnnounce.startsWith('http://') || rawAnnounce.startsWith('https://');
-        
-        // ✅ 3. ฟังก์ชันแปลงลิงก์ Google Drive ให้หน้าเว็บดึงรูปมาโชว์ได้โดยไม่ถูกบล็อก
-        const getDirectImageUrl = (url) => {
-            if (!url) return '';
-            // ถ้าไม่ใช่ลิงก์จาก drive ให้ส่งกลับเลย
-            if (!url.includes('drive.google.com')) return url;
-            
-            let id = '';
-            if (url.includes('id=')) {
-                id = url.split('id=')[1].split('&')[0];
-            } else if (url.includes('/file/d/')) {
-                id = url.split('/file/d/')[1].split('/')[0];
-            }
-            
-            return id ? `https://lh3.googleusercontent.com/d/${id}` : url;
-        };
-
-        // ✅ 4. ถ้าเป็นรูป ให้ใช้ลิงก์ที่แปลงแล้ว
-        const announceContent = isImageAnnounce ? getDirectImageUrl(rawAnnounce) : rawAnnounce;
-
-        const handleSwitchClick = () => {
-            if (isToggling) return; 
-            setConfirmModal({ isOpen: true, targetStatus: isMaintenance ? 'OFF' : 'ON' });
-        };
-
-        const confirmToggle = () => {
-            setIsToggling(true); setConfirmModal({ ...confirmModal, isOpen: false });
-            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => {
-                if (setData) setData(newData); setIsToggling(false); setSuccessModal(true);
-            }).catch((err) => { setIsToggling(false); alert("เกิดข้อผิดพลาด: " + err.message); });
-        };
 
         return (
           <div className="space-y-6 animate-fade-in pb-24 relative">
             <ScrollToTopBottom />
 
-            {/* Header */}
             <div className="flex justify-between items-center px-2 pt-2">
                 <div>
                     <p className="text-gray-400 text-xs font-medium">ยินดีต้อนรับกลับ,</p>
@@ -2060,71 +2009,6 @@
                 </div>
             </div>
 
-            {/* ✅ Layout: ระบบควมคุม + ประกาศ (หน้าจอคอมจะแบ่งซ้าย-ขวา) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mx-1">
-                
-                {/* 1. สวิตช์ปิดปรับปรุง */}
-                <div className={`p-5 rounded-[2rem] card-shadow border border-gray-100 relative overflow-hidden transition-all ${isMaintenance ? 'bg-red-50/50 border-red-100' : 'bg-white'}`}>
-            <div className="flex justify-between items-center mb-4">
-                <div>
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        โหมดปิดปรับปรุง
-                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${isMaintenance ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{isMaintenance ? 'ON' : 'OFF'}</span>
-                    </h3>
-                </div>
-                <div onClick={handleSwitchClick} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}>
-                    <div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${isMaintenance ? 'translate-x-5' : 'translate-x-0'}`} />
-                </div>
-            </div>
-            
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase">ข้อความแจ้งเตือนเมื่อปิดระบบ</label>
-                <div className="flex gap-2">
-                    <input 
-                        type="text" 
-                        value={mMsg} 
-                        onChange={(e) => setMMsg(e.target.value)}
-                        placeholder="เช่น ขออภัย ระบบกำลังอัปเดต..."
-                        className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-red-300"
-                    />
-                    <button onClick={handleSaveMsg} className="px-3 py-2 bg-gray-800 text-white rounded-xl text-[10px] font-bold">บันทึก</button>
-                </div>
-            </div>
-        </div>
-
-                {/* 2. การ์ดประกาศขนาดกะทัดรัด (เลือกรูป หรือ ข้อความ) */}
-                <div className="bg-white p-4 rounded-2xl card-shadow border border-blue-100 flex flex-col gap-2 relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-1">
-                        <div className="flex items-center gap-2">
-                            <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div>
-                            <h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ</h3>
-                        </div>
-                        <button onClick={() => { 
-                            setAnnounceForm({ 
-                                type: isImageAnnounce ? 'image' : 'text', 
-                                text: isImageAnnounce ? '' : rawAnnounce, 
-                                fileBase64: '', 
-                                preview: isImageAnnounce ? announceContent : '' 
-                            }); 
-                            setIsAnnounceModalOpen(true); 
-                        }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg">
-                            <Icon name="pencil-simple" weight="bold" size={14}/>
-                        </button>
-                    </div>
-                    {isImageAnnounce ? (
-                        <div className="w-full h-24 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}>
-                            {/* ✅ เพิ่ม referrerPolicy="no-referrer" ตรงนี้ */}
-                            <img src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer" />
-                        </div>
-                    ) : (
-                        <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-50 min-h-[60px] flex items-center">
-                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap line-clamp-3">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Stats Grid */}
             <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center px-2">
                     <h3 className="text-gray-800 font-bold text-lg">ภาพรวมระบบ</h3>
@@ -2141,74 +2025,11 @@
                         </div>
                         <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center relative z-10 shadow-inner"><Icon name="wallet" weight="fill" size={24}/></div>
                     </div>
-                    <StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('pending')} alert={pendingBillsCount > 0} variant="warning" />
+                    <StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('bills')} alert={pendingBillsCount > 0} variant="warning" />
                     <StatCard title="ค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
                     <div className="col-span-2"><StatCard title="เกินกำหนดชำระ" value={`${allOverdueCount} รายการ`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" /></div>
                 </div>
             </div>
-
-            {/* QR Wallet */}
-            <div className="pt-2">
-                <div className="flex justify-between items-center px-2 mb-3"><h3 className="text-gray-800 font-bold text-lg flex items-center gap-2"><Icon name="qr-code" className="text-primary"/> บัญชีรับเงิน</h3><button onClick={onOpenQrManager} className="text-primary text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition">จัดการ QR</button></div>
-                {qrCodes.length > 0 ? (
-                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 px-2 snap-x">
-                        {qrCodes.map((qr, idx) => (
-                            <div key={idx} className="snap-center min-w-[260px] h-[160px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-4 text-white relative shadow-lg flex flex-col justify-between group">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -translate-y-4 translate-x-4"></div>
-                                <div className="flex justify-between items-start z-10"><div className="bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/10"><Icon name="qr-code" size={20} className="text-white"/></div><div className="text-right"><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">AMOUNT</p><p className="text-lg font-bold">฿{Number(qr.amount).toLocaleString()}</p></div></div>
-                                <div className="flex gap-4 items-center z-10 mt-2"><div className="w-16 h-16 bg-white p-1 rounded-xl"><img src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/></div><div className="flex-1"><button onClick={() => onEditQr(qr)} className="w-full py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold transition border border-white/5">แก้ไข / ลบ</button></div></div>
-                            </div>
-                        ))}
-                        <button onClick={onOpenQrManager} className="snap-center min-w-[100px] h-[160px] bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center text-gray-400 hover:text-primary hover:border-primary/50 hover:bg-blue-50 transition gap-2"><div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center"><Icon name="plus" weight="bold"/></div><span className="text-xs font-bold">เพิ่มบัญชี</span></button>
-                    </div>
-                ) : (
-                    <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center text-gray-400 gap-3"><Icon name="wallet" size={48} className="opacity-30" weight="duotone"/><p className="text-sm">ยังไม่มีบัญชีรับเงิน</p><button onClick={onOpenQrManager} className="px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-xl text-xs font-bold hover:bg-gray-100 transition">เพิ่ม QR Code แรก</button></div>
-                )}
-            </div>
-
-            
-
-            {/* Modal ยืนยันการสลับสวิตช์ */}
-            <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, targetStatus: '' })} title="ยืนยันการเปลี่ยนสถานะ" zIndex="z-[100]">
-                <div className="text-center pt-2 space-y-4">
-                    <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${confirmModal.targetStatus === 'ON' ? 'bg-red-100 text-red-500' : 'bg-green-100 text-green-500'}`}>
-                        <Icon name="power" weight="fill" size={32}/>
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-gray-800 text-lg">
-                            {confirmModal.targetStatus === 'ON' 
-                                ? 'ต้องการ "ปิดปรับปรุงระบบ" ใช่หรือไม่?' 
-                                : 'ต้องการ "เปิดใช้งานระบบ" ใช่หรือไม่?'}
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-2">
-                            {confirmModal.targetStatus === 'ON' 
-                                ? 'นักศึกษาจะไม่สามารถเข้าสู่ระบบได้ชั่วคราว' 
-                                : 'นักศึกษาจะสามารถกลับมาเข้าใช้งานได้ตามปกติ'}
-                        </p>
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                        <button onClick={() => setConfirmModal({ isOpen: false, targetStatus: '' })} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button>
-                        <button 
-                            onClick={confirmToggle} 
-                            className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg transition ${
-                                confirmModal.targetStatus === 'ON' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 'bg-green-600 hover:bg-green-700 shadow-green-200'
-                            }`}
-                        >
-                            ยืนยัน
-                        </button>
-                    </div>
-                </div>
-            </Modal>
-
-            {/* Modal แสดงผล "เรียบร้อย" */}
-            <Modal isOpen={successModal} onClose={() => setSuccessModal(false)} title="เรียบร้อย" zIndex="z-[110]">
-                <div className="text-center pt-2 space-y-4">
-                    <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-green-100 text-green-500"><Icon name="check-circle" weight="fill" size={32}/></div>
-                    <div><h3 className="font-bold text-gray-800 text-lg">ดำเนินการเรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">สถานะระบบถูกเปลี่ยนแปลงแล้ว</p></div>
-                    <button onClick={() => setSuccessModal(false)} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-200 transition">ตกลง</button>
-                </div>
-            </Modal>
-
           </div>
         );
     };
@@ -2921,7 +2742,7 @@
         );
     };
 
-    // --- 1. Helper Component: Image Manager (Modern Design) ---
+    // --- 1. Helper Component: Image Manager ---
     const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew }) => {
         const inputId = `file-input-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -2937,13 +2758,13 @@
                 <div className="grid grid-cols-4 gap-3">
                     {/* 1. รูปเดิม (Existing) */}
                     {existingUrls.map((url, idx) => (
-                        <div key={`exist-${idx}`} className="relative aspect-square rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-all">
+                        <div key={`exist-${idx}`} className="relative aspect-square rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-all bg-gray-100">
                             <img 
                                 src={getDirectImageUrl(url.trim())} 
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                                 alt="old" 
                                 referrerPolicy="no-referrer" 
-                                onError={(e) => { e.target.style.display = 'none'; }}
+                                onError={(e) => { e.target.style.opacity = '0.3'; }}
                             />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
                                 <button type="button" onClick={() => onRemoveExisting(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
@@ -2967,10 +2788,7 @@
                     ))}
 
                     {/* 3. ปุ่มเพิ่ม (+) */}
-                    <label 
-                        htmlFor={inputId}
-                        className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50/50 transitionGroup group"
-                    >
+                    <label htmlFor={inputId} className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50/50 transitionGroup group">
                         <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
                             <Icon name="plus" weight="bold" className="text-gray-400 group-hover:text-primary"/>
                         </div>
@@ -2985,7 +2803,6 @@
     // --- Product Modal ---
     const ProductModal = ({ isOpen, onClose, product, onSave, loading, zIndex = "z-[110]" }) => {
         const [form, setForm] = useState({ id: '', name: '', price: '', options: '', status: 'ON', stock: '' });
-        
         const [existingMainImages, setExistingMainImages] = useState([]); 
         const [newMainFiles, setNewMainFiles] = useState([]); 
         const [existingSizeImages, setExistingSizeImages] = useState([]); 
@@ -2996,11 +2813,9 @@
             if(isOpen) {
                 if (product) {
                     setForm(product);
-
                     const mainImgs = [];
                     const sizeImgs = [];
                     
-                    // ดึง image, image2, image3...
                     if (product.image && product.image.includes(' | ')) {
                         mainImgs.push(...product.image.split(' | ').map(s=>s.trim()).filter(Boolean));
                     } else {
@@ -3009,7 +2824,6 @@
                         while(product[`image${i}`]) { mainImgs.push(product[`image${i}`]); i++; }
                     }
 
-                    // ดึง sizeChart, sizeChart2...
                     if (product.sizeChart && product.sizeChart.includes(' | ')) {
                         sizeImgs.push(...product.sizeChart.split(' | ').map(s=>s.trim()).filter(Boolean));
                     } else {
@@ -3090,13 +2904,9 @@
         return ReactDOM.createPortal(
             <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in`}>
                 <div className="bg-[#F8FAFC] rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-in">
-                    
-                    {/* Header */}
                     <div className="px-6 py-4 bg-white/80 backdrop-blur-sm flex justify-between items-center border-b border-gray-100 z-10 sticky top-0">
                         <div>
-                            <h3 className="font-extrabold text-xl text-gray-800 tracking-tight">
-                                {product?.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}
-                            </h3>
+                            <h3 className="font-extrabold text-xl text-gray-800 tracking-tight">{product?.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{product?.id ? `#${product.id}` : 'CREATE NEW'}</p>
                         </div>
                         <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all shadow-sm">
@@ -3104,10 +2914,7 @@
                         </button>
                     </div>
 
-                    {/* Scrollable Content */}
                     <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                        
-                        {/* 1. ข้อมูลพื้นฐาน */}
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block ml-1">ชื่อสินค้า</label>
@@ -3116,9 +2923,7 @@
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block ml-1">ราคา (บาท)</label>
-                                    <div className="relative">
-                                        <input type="number" value={form.price} onChange={e => setForm({...form, price: e.target.value})} className="w-full pl-4 pr-4 py-3.5 bg-white rounded-2xl text-lg font-black text-indigo-600 outline-none border border-transparent focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm" placeholder="0"/>
-                                    </div>
+                                    <input type="number" value={form.price} onChange={e => setForm({...form, price: e.target.value})} className="w-full pl-4 pr-4 py-3.5 bg-white rounded-2xl text-lg font-black text-indigo-600 outline-none border border-transparent focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm" placeholder="0"/>
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block ml-1">สต็อก (ชิ้น)</label>
@@ -3127,23 +2932,18 @@
                             </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="border-t border-dashed border-gray-200"></div>
 
-                        {/* 2. รูปภาพ */}
                         <ImageManager label="รูปภาพสินค้า" existingUrls={existingMainImages} newImages={newMainFiles} onRemoveExisting={handleDelMainExist} onRemoveNew={handleDelMainNew} onAddNew={handleAddMain} />
                         <ImageManager label="ตารางไซส์" existingUrls={existingSizeImages} newImages={newSizeFiles} onRemoveExisting={handleDelSizeExist} onRemoveNew={handleDelSizeNew} onAddNew={handleAddSize} />
 
-                        {/* Divider */}
                         <div className="border-t border-dashed border-gray-200"></div>
 
-                        {/* 3. ตัวเลือก */}
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Icon name="sliders" weight="fill"/> ตัวเลือกสินค้า</label>
                                 <button onClick={handleAddGroup} className="text-[10px] bg-white border border-gray-200 px-3 py-1.5 rounded-full font-bold text-gray-500 hover:text-primary hover:border-primary transition shadow-sm">+ เพิ่มหัวข้อ</button>
                             </div>
-                            
                             {optionGroups.map((group, gIdx) => (
                                 <div key={gIdx} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 relative group transition-all hover:shadow-md">
                                     {optionGroups.length > 1 && (<button onClick={() => handleRemoveGroup(gIdx)} className="absolute -top-2 -right-2 text-white bg-red-400 rounded-full w-6 h-6 flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-all z-10"><Icon name="x" size={12} weight="bold"/></button>)}
@@ -3167,7 +2967,6 @@
                             ))}
                         </div>
 
-                        {/* 4. สถานะ */}
                         <div className="bg-white p-2 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                             <label className="text-xs font-bold text-gray-500 ml-2">สถานะการขาย</label>
                             <div className="relative w-1/2">
@@ -3181,7 +2980,6 @@
                         </div>
                     </div>
 
-                    {/* Footer Actions */}
                     <div className="p-4 bg-white border-t border-gray-50 z-10 sticky bottom-0">
                         <button onClick={handleSubmit} disabled={loading} className="w-full py-4 rounded-2xl font-bold text-white shadow-lg shadow-indigo-200 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 transform active:scale-95 transition-all flex items-center justify-center gap-2">
                             {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึกข้อมูล...</> : <><Icon name="check-circle" weight="bold" size={20}/> บันทึกสินค้า</>}
@@ -3190,6 +2988,176 @@
                 </div>
             </div>,
             document.body
+        );
+    };
+
+    // --- Settings View (แท็บตั้งค่าใหม่) ---
+    const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage }) => {
+        const isMaintenance = data.systemStatus === 'ON';
+        const [mMsg, setMMsg] = useState(data.config?.maintenanceMsg || '');
+        const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', targetStatus: '' });
+        const [successModal, setSuccessModal] = useState(false);
+
+        const rawAnnounce = String(data.announcement || '').trim();
+        const isImageAnnounce = rawAnnounce.startsWith('http://') || rawAnnounce.startsWith('https://');
+        const announceContent = isImageAnnounce ? getDirectImageUrl(rawAnnounce) : rawAnnounce;
+        const qrCodes = data.amount?.qrCodes || [];
+
+        const handleSaveMsg = () => {
+            setProcessingAction('SAVING_CONFIG');
+            db.collection('config').doc('system').set({ maintenanceMsg: mMsg }, { merge: true })
+              .then(() => { setProcessingAction(null); setSuccessModal(true); });
+        };
+
+        const confirmToggleMaintenance = () => {
+            setProcessingAction('TOGGLING_SYSTEM');
+            setConfirmModal({ ...confirmModal, isOpen: false });
+            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => {
+                setData(newData); setProcessingAction(null); setSuccessModal(true);
+            }).catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
+        };
+
+        const handleConfirm = () => {
+            if (confirmModal.type === 'MAINTENANCE') {
+                confirmToggleMaintenance();
+            } else if (confirmModal.type === 'ORDER') {
+                setConfirmModal({ ...confirmModal, isOpen: false });
+                onToggleOrderSystem(confirmModal.targetStatus === 'ON');
+            }
+        };
+
+        return (
+            <div className="space-y-6 animate-fade-in pb-24 relative">
+                <ScrollToTopBottom />
+                
+                <div className="px-2 pt-2">
+                    <h2 className="text-2xl font-bold text-gray-800 tracking-tight">ตั้งค่าระบบ</h2>
+                    <p className="text-xs text-gray-500 mt-1">จัดการสถานะระบบ, ประกาศ และบัญชีรับเงิน</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mx-1">
+                    
+                    {/* 1. โหมดปิดปรับปรุงระบบ */}
+                    <div className={`p-5 rounded-[2rem] card-shadow border relative overflow-hidden transition-all ${isMaintenance ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Icon name="power" weight="fill" className={isMaintenance ? 'text-red-500' : 'text-gray-400'} size={20}/>
+                                โหมดปรับปรุงระบบ
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${isMaintenance ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{isMaintenance ? 'ON' : 'OFF'}</span>
+                            </h3>
+                            <div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'MAINTENANCE', targetStatus: isMaintenance ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${isMaintenance ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">ข้อความแจ้งเตือน (โชว์เมื่อปิดระบบ)</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    value={mMsg} 
+                                    onChange={(e) => setMMsg(e.target.value)}
+                                    placeholder="เช่น ขออภัย ระบบกำลังอัปเดต..."
+                                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-red-300"
+                                />
+                                <button onClick={handleSaveMsg} disabled={processingAction === 'SAVING_CONFIG'} className="px-3 py-2 bg-gray-800 text-white rounded-xl text-[10px] font-bold hover:bg-gray-700 transition">บันทึก</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. เปิด-ปิดระบบร้านค้า */}
+                    <div className={`p-5 rounded-[2rem] card-shadow border relative overflow-hidden transition-all ${orderData?.systemStatus === 'ON' ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}>
+                         <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Icon name="storefront" weight="fill" className={orderData?.systemStatus === 'ON' ? 'text-green-600' : 'text-gray-400'} size={20}/>
+                                รับออเดอร์ร้านค้า
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${orderData?.systemStatus === 'ON' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{orderData?.systemStatus === 'ON' ? 'ON' : 'OFF'}</span>
+                            </h3>
+                            <div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'ORDER', targetStatus: orderData?.systemStatus === 'ON' ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${orderData?.systemStatus === 'ON' ? 'bg-green-500' : 'bg-gray-300'}`}>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${orderData?.systemStatus === 'ON' ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{orderData?.systemStatus === 'ON' ? 'นักศึกษาสามารถกดสั่งซื้อสินค้าได้ตามปกติ' : 'หน้าร้านค้าจะถูกปิดใช้งานชั่วคราว'}</p>
+                    </div>
+
+                    {/* 3. ประกาศจากระบบ */}
+                    <div className="bg-white p-5 rounded-[2rem] card-shadow border border-gray-100 flex flex-col gap-2 relative overflow-hidden md:col-span-2">
+                        <div className="flex justify-between items-center mb-1">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div>
+                                <h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ (แบนเนอร์)</h3>
+                            </div>
+                            <button onClick={() => { 
+                                setAnnounceForm({ 
+                                    type: isImageAnnounce ? 'image' : 'text', 
+                                    text: isImageAnnounce ? '' : rawAnnounce, 
+                                    fileBase64: '', 
+                                    preview: isImageAnnounce ? announceContent : '' 
+                                }); 
+                                setIsAnnounceModalOpen(true); 
+                            }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg">
+                                <Icon name="pencil-simple" weight="bold" size={14}/> แก้ไขประกาศ
+                            </button>
+                        </div>
+                        {isImageAnnounce ? (
+                            <div className="w-full h-32 md:h-48 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}>
+                                <img src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer"/>
+                            </div>
+                        ) : (
+                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-50 min-h-[60px] flex items-center">
+                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. บัญชีรับเงิน (QR Wallet) */}
+                <div className="pt-4 px-1">
+                    <div className="flex justify-between items-center px-2 mb-3">
+                        <h3 className="text-gray-800 font-bold text-lg flex items-center gap-2"><Icon name="qr-code" className="text-primary"/> บัญชีรับเงิน (QR Code)</h3>
+                        <button onClick={onOpenQrManager} className="text-primary text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">+ เพิ่มบัญชี</button>
+                    </div>
+                    {qrCodes.length > 0 ? (
+                        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 px-2 snap-x">
+                            {qrCodes.map((qr, idx) => (
+                                <div key={idx} className="snap-center min-w-[260px] h-[160px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-4 text-white relative shadow-lg flex flex-col justify-between group">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -translate-y-4 translate-x-4"></div>
+                                    <div className="flex justify-between items-start z-10"><div className="bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/10"><Icon name="qr-code" size={20} className="text-white"/></div><div className="text-right"><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">ยอดสำหรับสแกนจ่าย</p><p className="text-lg font-bold">฿{Number(qr.amount).toLocaleString()}</p></div></div>
+                                    <div className="flex gap-4 items-center z-10 mt-2"><div className="w-16 h-16 bg-white p-1 rounded-xl"><img src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/></div><div className="flex-1"><button onClick={() => onEditQr(qr)} className="w-full py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold transition border border-white/5">แก้ไข / ลบ</button></div></div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center text-gray-400 gap-3"><Icon name="wallet" size={48} className="opacity-30" weight="duotone"/><p className="text-sm">ยังไม่มีบัญชีรับเงิน</p></div>
+                    )}
+                </div>
+
+                {/* Modals for Settings */}
+                <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} title="ยืนยันการเปลี่ยนสถานะ" zIndex="z-[100]">
+                    <div className="text-center pt-2 space-y-4">
+                        <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${confirmModal.targetStatus === 'ON' ? 'bg-green-100 text-green-500' : 'bg-red-100 text-red-500'}`}>
+                            <Icon name={confirmModal.type === 'MAINTENANCE' ? "power" : "storefront"} weight="fill" size={32}/>
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">
+                                ยืนยันการ {confirmModal.targetStatus === 'ON' ? 'เปิด' : 'ปิด'} ระบบ
+                            </h3>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button>
+                            <button onClick={handleConfirm} className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg transition ${confirmModal.targetStatus === 'ON' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}>ยืนยัน</button>
+                        </div>
+                    </div>
+                </Modal>
+
+                <Modal isOpen={successModal} onClose={() => setSuccessModal(false)} title="เรียบร้อย" zIndex="z-[110]">
+                    <div className="text-center pt-2 space-y-4">
+                        <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-green-100 text-green-500"><Icon name="check-circle" weight="fill" size={32}/></div>
+                        <div><h3 className="font-bold text-gray-800 text-lg">บันทึกเรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">การตั้งค่าถูกบันทึกแล้ว</p></div>
+                        <button onClick={() => setSuccessModal(false)} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-200 transition">ตกลง</button>
+                    </div>
+                </Modal>
+            </div>
         );
     };
 
@@ -3428,8 +3396,8 @@
       );
     };
 
-    // --- Order View (แก้ไขป้องกันการ Crash ทั้งปวง) ---
-    const OrderView = ({ orderData, students, onToggleSystem, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, processingAction, onEditOrder, setOrderData }) => {
+    // --- Order View (ตัดส่วน Manage ออก ย้ายไป Settings) ---
+    const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, onEditOrder, setOrderData }) => {
         const [subTab, setSubTab] = useState('orders');
         const [isModalOpen, setIsModalOpen] = useState(false);
         const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -3445,10 +3413,9 @@
         const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
         const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'info' });
 
-        // ✅ 1. Parse Safe Dates
         const parseDateSafe = (dateVal) => {
             if (!dateVal) return new Date(0);
-            if (dateVal.toDate && typeof dateVal.toDate === 'function') return dateVal.toDate(); // Firestore Timestamp
+            if (dateVal.toDate && typeof dateVal.toDate === 'function') return dateVal.toDate();
             if (dateVal.seconds) return new Date(dateVal.seconds * 1000); 
             return new Date(dateVal);
         };
@@ -3462,10 +3429,8 @@
             } catch (e) { return '-'; }
         };
 
-        // ✅ 2. Parse Items Safely
         const parseOrderItems = (itemsStr) => {
             if (!itemsStr) return [];
-            // ป้องกัน items เป็น Array หรือ Object
             const safeStr = typeof itemsStr === 'string' ? itemsStr : String(itemsStr || '');
             const rawItems = safeStr.includes('\n') ? safeStr.split('\n') : safeStr.split(/,(?![^(]*\))/);
             
@@ -3598,33 +3563,7 @@
           <div className="space-y-5 pb-24 relative animate-fade-in">
              <ScrollToTopBottom />
 
-             <div className="bg-white p-5 rounded-3xl card-shadow border border-gray-100 relative overflow-hidden">
-                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
-                 <div className="relative z-10 flex justify-between items-center">
-                     <div>
-                         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                             <div className="bg-blue-100 p-1.5 rounded-lg text-primary"><Icon name="storefront" weight="fill" size={20}/></div>
-                             จัดการร้านค้า
-                         </h2>
-                         <p className="text-xs text-gray-400 mt-1 pl-1">ควบคุมการขายและออเดอร์</p>
-                     </div>
-                     
-                     <button 
-                         onClick={()=> !loading && onToggleSystem(orderData?.systemStatus === 'ON' ? false : true)} 
-                         disabled={loading || processingAction === 'TOGGLE_SYSTEM'}
-                         className={`relative pl-3 pr-1 py-1 h-9 rounded-full flex items-center gap-2 transition-all duration-300 shadow-sm border ${orderData?.systemStatus === 'ON' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
-                     >
-                         <span className={`text-[10px] font-bold ${orderData?.systemStatus === 'ON' ? 'text-green-600' : 'text-gray-400'}`}>
-                             {orderData?.systemStatus === 'ON' ? 'เปิดรับออเดอร์' : 'ปิดปรับปรุง'}
-                         </span>
-                         <div className={`w-7 h-7 rounded-full shadow-md flex items-center justify-center transition-transform duration-300 ${orderData?.systemStatus === 'ON' ? 'bg-green-500 translate-x-0' : 'bg-gray-400 -translate-x-0'}`}>
-                             {processingAction === 'TOGGLE_SYSTEM' ? <Icon name="spinner" className="animate-spin text-white" size={14} weight="bold"/> : <Icon name="power" className="text-white" size={14} weight="bold"/>}
-                         </div>
-                     </button>
-                 </div>
-             </div>
-             
-             <div className="bg-white p-1.5 rounded-2xl card-shadow border border-gray-100 flex relative z-10">
+             <div className="bg-white p-1.5 rounded-2xl card-shadow border border-gray-100 flex relative z-10 mt-2">
                  <button onClick={()=>setSubTab('orders')} className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 ${subTab === 'orders' ? 'bg-gray-800 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>
                      <Icon name="receipt" weight={subTab === 'orders' ? 'fill' : 'bold'} size={18}/> <span className="text-sm font-bold">ออเดอร์ ({safeOrders.length})</span>
                  </button>
@@ -3655,7 +3594,6 @@
              </div>
 
              <div className="min-h-[300px]">
-                 
                   {subTab === 'products' && (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in">
                         {filteredProducts.map((p) => (
@@ -3681,7 +3619,6 @@
 
                  {subTab === 'orders' && (
                    <div className="space-y-4 animate-fade-in">
-                       
                        {filteredOrders.length > 0 && (
                             <div className="bg-gray-50 p-2 rounded-xl flex gap-2 border border-gray-100">
                                  <button onClick={() => setIsBulkStatusOpen(true)} className="flex-1 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-200 transition flex items-center justify-center gap-1 border border-indigo-200 shadow-sm">
@@ -3699,7 +3636,6 @@
                        
                        {groupedOrders.map((group) => (
                            <div key={group.studentId} className="bg-white rounded-3xl card-shadow border border-gray-100 overflow-hidden transition-all hover:shadow-lg">
-                               
                                <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border-b border-gray-100 flex justify-between items-center relative overflow-hidden">
                                    <div className="flex items-center gap-3 relative z-10">
                                        <div className="w-12 h-12 rounded-2xl bg-white text-blue-600 flex items-center justify-center text-lg font-black shadow-sm border border-blue-100 flex-shrink-0">
@@ -3726,7 +3662,6 @@
                                        
                                        return (
                                            <div key={o.orderId || Math.random()} className="bg-white rounded-[1.25rem] p-4 border border-gray-100 shadow-sm relative hover:border-blue-200 transition-colors group/order">
-                                               
                                                <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50">
                                                    <div className="flex items-center gap-3">
                                                        <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded-lg flex items-center gap-1 border border-gray-200">
@@ -4578,7 +4513,7 @@
       );
     };
     
-    // --- MAIN APP ---
+    / --- MAIN APP ---
     const App = () => {
       const [activeTab, setActiveTab] = useState('dashboard');
       const [loading, setLoading] = useState(true);
@@ -4746,7 +4681,7 @@
           return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
       }
 
-      // ✅ ตัดเมนู 'รอตรวจ' (pending) ออกจากเมนูด้านซ้ายและล่าง
+      // ✅ ตัดเมนู 'รอตรวจ' ออก และเพิ่มแท็บ 'ตั้งค่า' (Settings)
       const navMenus = [ 
           { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
           { id: 'bills', icon: 'receipt', label: 'บิล' }, 
@@ -4754,7 +4689,8 @@
           { id: 'finance', icon: 'wallet', label: 'การเงิน' }, 
           { id: 'history', icon: 'clipboard-text', label: 'ประวัติ' }, 
           { id: 'students', icon: 'users', label: 'ผู้ใช้' }, 
-          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' } 
+          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' },
+          { id: 'settings', icon: 'gear', label: 'ตั้งค่า' }
       ];
 
       return (
@@ -4775,6 +4711,7 @@
             <nav className="flex flex-col gap-2 overflow-y-auto no-scrollbar">
               {navMenus.map(tab => {
                 const isActive = activeTab === tab.id;
+                // ✅ ซ่อน Badge ในแถบเมนูด้านซ้ายและล่าง (รอตรวจย้ายไปแจ้งเตือนในหน้าบิลแทนแล้ว)
                 return (
                   <button 
                     key={tab.id} 
@@ -4783,9 +4720,6 @@
                   >
                     <Icon name={tab.icon} size={22} weight={isActive ? 'fill' : 'bold'} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
                     <span className="text-sm">{tab.label}</span>
-                    {tab.badge > 0 && (
-                      <span className="ml-auto bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{tab.badge > 9 ? '9+' : tab.badge}</span>
-                    )}
                   </button>
                 );
               })}
@@ -4807,13 +4741,14 @@
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
-                  {activeTab === 'dashboard' && <DashboardView data={data} setData={setData} setActiveTab={setActiveTab} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl}/>}
+                  {activeTab === 'dashboard' && <DashboardView data={data} setActiveTab={setActiveTab} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} />}
                   {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                   {activeTab === 'history' && <HistoryView data={data} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                   {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
                   {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
-                  {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
+                  {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} />}
                   {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
+                  {activeTab === 'settings' && <SettingsView data={data} setData={setData} orderData={orderData} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleOrderSystem={handleToggleOrderSystem} />}
                 </>
               )}
             </main>
@@ -4823,6 +4758,7 @@
           <nav className="md:hidden fixed bottom-5 left-4 right-4 max-w-lg mx-auto bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-2xl shadow-blue-900/10 px-2 py-3 flex justify-between items-center z-40 animate-slide-up-fade">
             {navMenus.map(tab => {
               const isActive = activeTab === tab.id;
+              // ✅ ซ่อน Badge ในแถบเมนูมือถือ (รอตรวจย้ายไปแจ้งเตือนในหน้าบิลแทนแล้ว)
               return (
                 <button 
                   key={tab.id} 
@@ -4836,14 +4772,6 @@
                     {tab.label}
                   </span>
                   {isActive && <div className="absolute -bottom-2 w-1 h-1 bg-blue-600 rounded-full"></div>}
-                  {tab.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[9px] font-bold items-center justify-center border border-white">
-                        {tab.badge > 9 ? '9+' : tab.badge}
-                      </span>
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -4918,33 +4846,20 @@
                       </div>
                       <div className="space-y-0 mt-4 border border-gray-100 rounded-2xl overflow-hidden">
                           <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
-                              <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="hash" weight="bold"/> รหัสบิล</span>
-                              <span className="font-mono text-sm font-bold text-gray-700">#{selectedBill.billId}</span>
-                          </div>
-                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                               <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="user" weight="bold"/> นักศึกษา</span>
-                              <span className="font-medium text-sm text-right">{selectedBill.studentId} <br/><span className="text-primary text-xs">{data.students?.find(s => s.id === selectedBill.studentId)?.name}</span></span>
+                              <span className="font-medium text-sm text-right">
+                                  {selectedBill.studentId} 
+                                  <br/>
+                                  <span className="text-primary text-xs">
+                                      {data.students?.find(s => String(s.id) === String(selectedBill.studentId))?.name || 'ไม่พบชื่อนักศึกษา'}
+                                  </span>
+                              </span>
                           </div>
-                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
-                              <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="calendar-check" weight="bold"/> ครบกำหนด</span>
-                              <span className="font-medium text-sm">{formatDate(selectedBill.dueDate)}</span>
-                          </div>
-                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
-                              <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="currency-btc" weight="bold"/> เงินต้น</span>
-                              <span className="font-medium text-sm">{amount.toLocaleString()}</span>
-                          </div>
-                          {fine > 0 && (
-                              <div className="flex justify-between py-3 px-4 bg-orange-50/50 border-b border-orange-50 items-center">
-                                  <span className="text-xs text-orange-600 font-bold flex items-center gap-2"><Icon name="warning-circle" weight="bold"/> ค่าปรับล่าช้า</span>
-                                  <span className="font-bold text-sm text-orange-600">+{fine.toLocaleString()}</span>
-                              </div>
-                          )}
-                          {discount > 0 && (
-                              <div className="flex justify-between py-3 px-4 bg-green-50/50 border-b border-green-50 items-center">
-                                  <span className="text-xs text-green-600 font-bold flex items-center gap-2"><Icon name="percent" weight="bold"/> ส่วนลด</span>
-                                  <span className="font-bold text-sm text-green-600">-{discount.toLocaleString()}</span>
-                              </div>
-                          )}
+                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center"><span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="hash" weight="bold"/> รหัสบิล</span><span className="font-mono text-sm font-bold text-gray-700">#{selectedBill.billId}</span></div>
+                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center"><span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="calendar-check" weight="bold"/> ครบกำหนด</span><span className="font-medium text-sm text-red-500 font-bold">{formatDate(selectedBill.dueDate)}</span></div>
+                          <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center"><span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="currency-btc" weight="bold"/> เงินต้น</span><span className="font-medium text-sm">{amount.toLocaleString()}</span></div>
+                          {fine > 0 && <div className="flex justify-between py-3 px-4 bg-orange-50/50 border-b border-orange-50 items-center"><span className="text-xs text-orange-600 font-bold flex items-center gap-2"><Icon name="warning-circle" weight="bold"/> ค่าปรับล่าช้า</span><span className="font-bold text-sm text-orange-600">+{fine.toLocaleString()}</span></div>}
+                          {discount > 0 && <div className="flex justify-between py-3 px-4 bg-green-50/50 border-b border-green-50 items-center"><span className="text-xs text-green-600 font-bold flex items-center gap-2"><Icon name="percent" weight="bold"/> ส่วนลด</span><span className="font-bold text-sm text-green-600">-{discount.toLocaleString()}</span></div>}
                           
                           {selectedBill.payDate && (
                               <div className="flex justify-between py-3 px-4 bg-emerald-50/50 border-b border-emerald-50 items-center">
@@ -4989,7 +4904,6 @@
               isDestructive={false} 
           />
 
-          {/* Modal จัดการประกาศ */}
           <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="จัดการประกาศ">
               <div className="space-y-4 pt-2">
                   <div className="flex bg-gray-100 p-1 rounded-xl">
@@ -5033,19 +4947,10 @@
                   )}
 
                   <div className="flex gap-2 pt-2">
-                      <button 
-                          onClick={handleDeleteAnnouncementClick} 
-                          disabled={loading || !data.announcement} 
-                          className="px-4 py-3 rounded-xl bg-red-50 text-red-500 font-bold hover:bg-red-100 disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-300 transition flex items-center justify-center shadow-sm border border-red-100"
-                          title="ลบประกาศ"
-                      >
+                      <button onClick={handleDeleteAnnouncementClick} disabled={loading || !data.announcement} className="px-4 py-3 rounded-xl bg-red-50 text-red-500 font-bold hover:bg-red-100 disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-300 transition flex items-center justify-center shadow-sm border border-red-100" title="ลบประกาศ">
                           <Icon name="trash" weight="bold" size={20}/>
                       </button>
-                      <button 
-                          onClick={handleSaveAnnouncement} 
-                          disabled={loading || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} 
-                          className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2"
-                      >
+                      <button onClick={handleSaveAnnouncement} disabled={loading || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2">
                           {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : 'บันทึกประกาศ'}
                       </button>
                   </div>
@@ -5057,7 +4962,7 @@
           <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students?.find(s => s.id === viewingStudentId)} bills={data.bills?.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
           <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
-          <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={viewingSlipUrl} />
+          <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={getDirectImageUrl(viewingSlipUrl)} />
         </div>
       );
     };
