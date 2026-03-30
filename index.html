@@ -2870,42 +2870,6 @@
         );
     };
 
-        const nextImage = (e) => {
-            e.stopPropagation();
-            setCurrentIndex((prev) => (prev + 1) % images.length);
-        };
-
-        const prevImage = (e) => {
-            e.stopPropagation();
-            setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
-        };
-
-        return (
-            <div className="relative w-full h-full group bg-gray-100">
-                <img 
-                    src={images[currentIndex]} 
-                    className="w-full h-full object-cover" 
-                    alt={`รูปที่ ${currentIndex + 1}`}
-                    referrerPolicy="no-referrer" // ✅ สำคัญ: กัน Google Block รูป
-                    onError={(e) => { e.target.style.display = 'none'; }} // ถ้ารูปเสียให้ซ่อนไปเลย
-                />
-                
-                {/* แสดงจำนวนรูปที่มุมขวาบน (เพื่อเช็คว่าอ่านครบไหม) */}
-                <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
-                    {currentIndex + 1} / {images.length}
-                </div>
-
-                {/* ปุ่มเลื่อน (ถ้ามีมากกว่า 1 รูป) */}
-                {images.length > 1 && (
-                    <>
-                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev - 1 + images.length) % images.length)}} className="absolute left-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-left" weight="bold" className="text-white drop-shadow-md"/></button>
-                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % images.length)}} className="absolute right-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-right" weight="bold" className="text-white drop-shadow-md"/></button>
-                    </>
-                )}
-            </div>
-        );
-    };
-
     // --- 1. Helper Component: Image Manager (Modern Design) ---
     const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew }) => {
         const inputId = `file-input-${Math.random().toString(36).substr(2, 9)}`;
