@@ -2075,7 +2075,7 @@
         );
     };
 
-   // --- Dashboard View (อัปเดต: กดรอตรวจล่าสุดเปิดหน้าต่างบิล, กด StatCard ไปหน้ารอตรวจ) ---
+   // --- Dashboard View ---
     const DashboardView = ({ data, orderData, setActiveTab, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills, onEditHistory, onSelectBill }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
@@ -2090,7 +2090,6 @@
             return data.history.filter(h => isDateInRange(h.payDate || h.timestamp, dateFilter.start, dateFilter.end)).reduce((sum, item) => sum + (Number(item.total) || 0), 0); 
         }, [data.history, dateFilter, isDateFilterActive]);
 
-        const pendingBillsCount = useMemo(() => data.bills.filter(b => b.status === 'รอตรวจสอบ').length, [data.bills]);
         const allUnpaidCount = useMemo(() => data.bills.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ').length, [data.bills]);
         const allOverdueCount = useMemo(() => { const today = new Date(); today.setHours(0,0,0,0); return data.bills.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; return new Date(b.dueDate) < today; }).length; }, [data.bills]);
 
@@ -2167,10 +2166,6 @@
                         <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center relative z-10 shadow-inner"><Icon name="wallet" weight="fill" size={24}/></div>
                     </div>
                     
-                    {/* ✅ แก้ไข: กดแล้วเรียกฟังก์ชัน onGoToPendingBills */}
-                    <StatCard title="บิลรอตรวจ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={onGoToPendingBills} alert={pendingBillsCount > 0} variant="warning" />
-                    <StatCard title="บิลค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
-                    
                     <div className="bg-white p-3.5 rounded-2xl card-shadow border border-gray-100 flex flex-col justify-center hover:bg-blue-50/50 transition cursor-pointer group" onClick={() => setActiveTab('finance')}>
                         <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1 mb-1 group-hover:text-blue-500 transition-colors"><Icon name="bank" weight="fill"/> งบการเงิน</p>
                         <h3 className="text-lg font-black text-emerald-600">฿{financeSummary.bal.toLocaleString()}</h3>
@@ -2186,7 +2181,8 @@
                         <p className="text-[9px] text-gray-500 mt-1 font-medium">ออเดอร์รวม {orderSummary.count} (รอ {orderSummary.pending})</p>
                     </div>
 
-                    <div className="col-span-2"><StatCard title="เกินกำหนดชำระ" value={`${allOverdueCount} รายการ`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" /></div>
+                    <StatCard title="บิลค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
+                    <StatCard title="เกินกำหนด" value={`${allOverdueCount}`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" />
                 </div>
             </div>
 
@@ -2202,7 +2198,7 @@
                         <button onClick={onGoToPendingBills} className="text-[10px] text-blue-600 font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">ดูทั้งหมด</button>
                     </div>
                     
-                   <div className="space-y-3 flex-1">
+                    <div className="space-y-3 flex-1">
                         {recentPending.length > 0 ? recentPending.map((bill, idx) => {
                             const studentName = data.students.find(s => String(s.id) === String(bill.studentId))?.name || 'ไม่ทราบชื่อ';
                             return (
@@ -2218,7 +2214,7 @@
                                     </div>
                                     <div className="text-right flex-shrink-0">
                                         <p className="text-sm font-black text-amber-600">฿{Number(bill.amount).toLocaleString()}</p>
-                                        <p className="text-[9px] text-amber-600/70 font-bold mt-1 flex items-center justify-end gap-1"><Icon name="magnifying-glass" weight="bold"/> รอตรวจ</p>
+                                        <p className="text-[9px] text-amber-600/70 font-bold mt-1 flex items-center justify-end gap-1"><Icon name="magnifying-glass" weight="bold"/> แตะเพื่อตรวจ</p>
                                     </div>
                                 </div>
                             )
@@ -2229,6 +2225,7 @@
                             </div>
                         )}
                     </div>
+                </div>
 
                 {/* ชำระเงินล่าสุด */}
                 <div className="bg-white rounded-[2rem] p-5 card-shadow border border-gray-100 flex flex-col">
@@ -2274,7 +2271,7 @@
         );
     };
 
-    // --- Bill View (ปรับดีไซน์รหัสบิล) ---
+    // --- Bill View ---
     const BillView = ({ data, setSelectedBill, setIsCreateModalOpen, searchTerm, setSearchTerm, filter, onFilterChange }) => {
         const [sortOrder, setSortOrder] = useState('newest');
         const [isSummaryOpen, setIsSummaryOpen] = useState(false);
@@ -2366,7 +2363,6 @@
                 <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-gray-500 hover:bg-gray-50 transition active:scale-95"><Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20} /></button>
             </div>
 
-            {/* Bill List */}
             <div className="space-y-3">
               {filteredBills.map((bill, idx) => {
                 const fine = calculateFine(bill); 
@@ -2387,7 +2383,6 @@
 
                             <div className="flex-1 min-w-0 flex justify-between">
                                 <div className="flex-1 min-w-0 mr-2">
-                                    {/* ✅ ปรับดีไซน์รหัสบิล สีน้ำเงิน/ตัวอักษรขาว */}
                                     <div className="mb-1.5">
                                         <span className="bg-blue-600 text-white px-2 py-0.5 rounded shadow-sm text-[10px] font-mono font-bold inline-flex items-center gap-1">
                                             <Icon name="hash" weight="bold" size={10}/> {bill.billId}
