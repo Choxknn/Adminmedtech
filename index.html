@@ -1001,7 +1001,7 @@
 
       return (
         <Modal isOpen={isOpen} onClose={onClose} title={`สรุปยอดบิล`}>
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+           <div className="space-y-4">
               {/* Filter Section (Only Items) */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                   <div onClick={() => setIsItemDrawerOpen(!isItemDrawerOpen)} className="p-3 flex justify-between items-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
@@ -1258,7 +1258,7 @@
                 </div>
 
                 {/* Section 2: รายละเอียดบิล */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+                <div className="space-y-3">
                     <div>
                         <label className="text-xs font-bold text-gray-500 mb-1 block flex items-center gap-1"><Icon name="tag" weight="bold"/> รายการชำระ</label>
                         <input type="text" name="item" value={formData.item} onChange={handleChange} required placeholder="เช่น ค่าชุดวิชาการ" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition placeholder-gray-300 font-medium"/>
@@ -1585,7 +1585,7 @@
                    <p>ไม่มีรายการบิล</p>
                </div>
            ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+             <div className="space-y-3">
                 {bills.map((bill, idx) => { 
                     const fine = calculateFine(bill); 
                     return (
@@ -1827,7 +1827,7 @@
                     
                     {/* TAB 1: OVERDUE (ติดตามหนี้) */}
                     {activeSubTab === 'overdue' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+                        <div className="space-y-4">
                             {/* Summary Card */}
                             <div className="bg-gradient-to-br from-red-500 to-pink-600 rounded-3xl p-5 text-white shadow-xl shadow-red-200 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
@@ -1912,7 +1912,7 @@
                                 </label>
                             </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+                            <div className="space-y-4">
                                 <div><label className="block text-xs font-bold text-gray-500 mb-1.5">ผู้รับข้อความ</label><StudentMultiSelect students={students} selectedIds={form.studentIds} onChange={(ids) => setForm({...form, studentIds: ids})} /></div>
                                 <div><label className="block text-xs font-bold text-gray-500 mb-1.5">หัวข้อเรื่อง</label><input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition text-sm font-medium" placeholder={form.type === 'announcement' ? "เช่น ประกาศหยุดเรียน..." : "แจ้งเตือน..."} /></div>
                                 <div><label className="block text-xs font-bold text-gray-500 mb-1.5">รายละเอียด (ไม่บังคับ)</label><textarea value={form.detail} onChange={(e) => setForm({...form, detail: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition min-h-[100px] text-sm" placeholder="รายละเอียดเพิ่มเติม..."></textarea></div>
@@ -2039,7 +2039,7 @@
                 </div>
             </div>
 
-            {/* Stats Grid */}
+            {/* Overview / Filter */}
             <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center px-2">
                     <h3 className="text-gray-800 font-bold text-lg">ภาพรวมระบบ</h3>
@@ -2047,19 +2047,18 @@
                 </div>
                 <div className={`overflow-hidden transition-all duration-300 ${isDateFilterActive ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'}`}><DateRangeFilter startDate={dateFilter.start} endDate={dateFilter.end} onChange={handleDateChange} isActive={isDateFilterActive} onToggle={() => {}} /></div>
                 
-                {/* ✅ ปรับ Grid ตรงนี้ให้เป็น lg:grid-cols-4 */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-                    <div className="col-span-2 lg:col-span-2 bg-gradient-to-r from-emerald-500 to-teal-500 p-5 rounded-3xl card-shadow flex items-center justify-between relative overflow-hidden text-white shadow-emerald-200">
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2 bg-gradient-to-r from-emerald-500 to-teal-500 p-5 rounded-3xl card-shadow flex items-center justify-between relative overflow-hidden text-white shadow-emerald-200">
                         <div className="absolute right-0 top-0 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl -translate-y-10 translate-x-10"></div>
                         <div className="relative z-10">
-                            <p className="text-emerald-100 text-xs font-bold mb-1">{isDateFilterActive ? "รายรับ (ช่วงเวลา)" : "รายรับทั้งหมด"}</p>
+                            <p className="text-emerald-100 text-xs font-bold mb-1">{isDateFilterActive ? "รายรับ (ตามช่วงเวลา)" : "รายรับทั้งหมด"}</p>
                             <h2 className="text-3xl font-black tracking-tight">฿{Number(totalBalance).toLocaleString()}</h2>
                         </div>
                         <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center relative z-10 shadow-inner"><Icon name="wallet" weight="fill" size={24}/></div>
                     </div>
-                    <div className="col-span-1"><StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('pending')} alert={pendingBillsCount > 0} variant="warning" /></div>
-                    <div className="col-span-1"><StatCard title="ค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} /></div>
-                    <div className="col-span-2 lg:col-span-1"><StatCard title="เกินกำหนด" value={`${allOverdueCount} บิล`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" /></div>
+                    <StatCard title="รอตรวจสอบ" value={pendingBillsCount} icon="clock-clockwise" gradient="from-amber-400 to-amber-500" onClick={() => setActiveTab('pending')} alert={pendingBillsCount > 0} variant="warning" />
+                    <StatCard title="ค้างชำระ" value={allUnpaidCount} icon="receipt" gradient="from-blue-400 to-blue-500" onClick={onGoToUnpaidBills} />
+                    <div className="col-span-2"><StatCard title="เกินกำหนดชำระ" value={`${allOverdueCount} รายการ`} icon="warning-circle" gradient="from-red-400 to-red-500" onClick={onGoToOverdueBills} alert={allOverdueCount > 0} variant="danger" /></div>
                 </div>
             </div>
 
@@ -2207,7 +2206,7 @@
              </div>
 
              {/* 3. Pending Cards */}
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+             <div className="space-y-3">
               {pendingBills.map((bill, idx) => {
                 const fine = calculateFine(bill);
                 const studentName = data.students.find(s => s.id === bill.studentId)?.name || '';
@@ -2370,7 +2369,7 @@
             </div>
 
             {/* Bill List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+            <div className="space-y-3">
               {filteredBills.map((bill, idx) => {
                 const fine = calculateFine(bill); 
                 const studentName = data.students.find(s => String(s.id) === String(bill.studentId))?.name || ''; 
@@ -2547,7 +2546,7 @@
                     </div>
 
                     {/* Search & Filter */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+                    <div className="space-y-3">
                         <div className="relative">
                             <Icon name="magnifying-glass" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                             <input type="text" placeholder="ค้นหาชื่อ, รหัสนักศึกษา..." className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 transition" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
@@ -2574,7 +2573,7 @@
             </div>
 
             {/* 2. List Items */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+            <div className="space-y-3">
               {filteredHistory.map((item, idx) => {
                 // ✅ ดึงชื่อจาก users (data.students) แบบเจาะจง String
                 const studentObj = data.students.find(s => String(s.id) === String(item.studentId));
@@ -2705,7 +2704,7 @@
              </div>
 
              {/* Student List */}
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+             <div className="space-y-3">
                  {filteredStudents.map((stu, i) => {
                     // Logic เช็คสถานะแบบละเอียด
                     const isLinked = stu.userId && String(stu.userId).trim() !== ''; // ต้องไม่ว่าง และไม่ใช่ spacebar
@@ -2863,7 +2862,7 @@
         const inputId = `file-input-${Math.random().toString(36).substr(2, 9)}`;
 
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+            <div className="space-y-3">
                 <div className="flex justify-between items-end px-1">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</label>
                     <span className="text-[10px] font-bold text-primary bg-indigo-50 px-2 py-0.5 rounded-full">
@@ -3031,7 +3030,7 @@
                     </div>
 
                     <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+                        <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block ml-1">ชื่อสินค้า</label>
                                 <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="ระบุชื่อสินค้า..." className="w-full px-4 py-3.5 bg-white rounded-2xl text-sm font-bold text-gray-700 outline-none border border-transparent focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm placeholder-gray-300"/>
@@ -3055,7 +3054,7 @@
 
                         <div className="border-t border-dashed border-gray-200"></div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+                        <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Icon name="sliders" weight="fill"/> ตัวเลือกสินค้า</label>
                                 <button onClick={handleAddGroup} className="text-[10px] bg-white border border-gray-200 px-3 py-1.5 rounded-full font-bold text-gray-500 hover:text-primary hover:border-primary transition shadow-sm">+ เพิ่มหัวข้อ</button>
@@ -3408,7 +3407,7 @@
 
       return (
         <Modal isOpen={isOpen} onClose={onClose} title="สรุปยอดขายสินค้า" zIndex={zIndex}>
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+           <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
                   <div className="flex items-center gap-2 text-gray-500 font-bold text-xs"><Icon name="funnel" weight="fill"/> ตัวกรองข้อมูล</div>
                   <div className="flex gap-2 items-start">
@@ -4029,7 +4028,7 @@
       
       return (
         <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขออเดอร์" zIndex={zIndex}>
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+           <div className="space-y-4">
               <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 mb-2">
                   <div className="flex justify-between text-sm">
                       <span className="text-gray-500">รหัสออเดอร์:</span>
@@ -4380,7 +4379,7 @@
               </div>
 
               {/* Project List (กล่องดีไซน์ใหม่) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+              <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-500 px-2 mt-2 flex items-center gap-2"><Icon name="folder-open" weight="duotone"/> โครงการที่กำลังดำเนินงาน</h3>
                 
                 {projects.list.map((p, idx) => {
@@ -4452,7 +4451,7 @@
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+              <div className="space-y-3">
                 {selectedProject.logs.slice().reverse().map((log, i) => (
                   <div key={i} className="bg-white p-4 rounded-2xl card-shadow border border-gray-100 hover:shadow-md transition relative group">
                     <div className="flex justify-between items-start mb-2">
@@ -4854,7 +4853,7 @@
               </button>
             </header>
 
-            <main className="p-4 md:p-8 max-w-[1400px] mx-auto w-full pb-24 md:pb-12 flex-1">
+            <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
                   {activeTab === 'dashboard' && <DashboardView data={data} setActiveTab={setActiveTab} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} />}
