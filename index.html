@@ -71,7 +71,7 @@
     const db = firebase.firestore();
     const storage = firebase.storage();
 
-    // ✅ 2. GAS URL (สำหรับ Line Notify อย่างเดียว)
+    // ✅ 2. GAS URL (สำหรับส่ง Line Notify เท่านั้น)
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwbNYCsHz7sxUx4TmjU2qiATY0oLmRC-XCOaPaLoPkiRlBZ2KHH95LDTx36JODNaeEkxw/exec";
     const notifyGas = async (action, data) => {
         try {
@@ -118,12 +118,14 @@
     const Icon = ({ name, size = 24, className = "", weight="regular" }) => <i className={`ph${weight === 'regular' ? '' : `-${weight}`} ph-${name} ${className}`} style={{ fontSize: size }}></i>;
     const Spinner = () => <div className="flex justify-center items-center py-10"><Icon name="circle-notch" className="animate-spin text-primary" size={32} weight="bold" /></div>;
     const LoadingOverlay = () => <div className="fixed inset-0 z-[300] bg-black/30 backdrop-blur-sm flex items-center justify-center animate-fade-in"><div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4"><div className="relative"><div className="w-12 h-12 border-4 border-blue-100 rounded-full"></div><div className="absolute top-0 left-0 w-12 h-12 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div></div><span className="text-sm font-bold text-gray-600 animate-pulse">กำลังประมวลผล...</span></div></div>;
+    
     const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, loading, confirmText = "ยืนยัน", isDestructive = true }) => {
         useScrollLock(isOpen); if (!isOpen) return null;
         return ReactDOM.createPortal(
             <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-scale-in text-center"><div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${isDestructive ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-primary'}`}>{loading ? <Icon name="circle-notch" className="animate-spin" size={32} weight="bold" /> : <Icon name={isDestructive ? "trash" : "paper-plane-right"} size={32} weight="fill" />}</div><h3 className="text-xl font-bold text-gray-800 mb-2">{title}</h3><p className="text-sm text-gray-500 mb-6 whitespace-pre-line">{message}</p><div className="flex gap-3"><button onClick={onClose} disabled={loading} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition disabled:opacity-50">ยกเลิก</button><button onClick={onConfirm} disabled={loading} className={`flex-1 py-3 rounded-xl text-white font-bold shadow-lg transition flex justify-center items-center gap-2 disabled:opacity-70 ${isDestructive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}>{loading ? <><Icon name="circle-notch" className="animate-spin" weight="bold"/> รอสักครู่</> : confirmText}</button></div></div></div>, document.body
         );
     };
+
     const StatCard = ({ title, value, icon, gradient, onClick, alert, variant = 'default' }) => {
       let bgClass = alert ? (variant === 'warning' ? "bg-amber-50" : "bg-red-50") : "bg-white";
       let blinkingBorder = alert && variant !== 'default' ? <div className={`absolute inset-0 rounded-2xl border-2 ${variant === 'warning' ? 'border-amber-400' : 'border-red-400'} animate-pulse pointer-events-none`}></div> : null;
@@ -136,6 +138,7 @@
         </div>
       );
     };
+
     const DateRangeFilter = ({ startDate, endDate, onChange, isActive, onToggle }) => (
       <div className="bg-white p-3 rounded-xl card-shadow mb-4 animate-fade-in border border-gray-100">
          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-50"><div className="flex items-center gap-2"><Icon name="calendar-blank" size={18} className="text-primary"/><span className="text-xs font-bold text-gray-700">กรองตามช่วงเวลา</span></div><button onClick={onToggle} className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out focus:outline-none flex items-center ${isActive ? 'bg-primary' : 'bg-gray-200'}`}><div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${isActive ? 'translate-x-4' : 'translate-x-0'}`}/></button></div>
@@ -145,30 +148,35 @@
          </div>
       </div>
     );
+
     const ScrollToTopBottom = () => {
       const [showBtn, setShowBtn] = useState(false);
       useEffect(() => { const checkScroll = () => setShowBtn(window.scrollY > 300); window.addEventListener('scroll', checkScroll); return () => window.removeEventListener('scroll', checkScroll); }, []);
       if (!showBtn) return null;
       return (<button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-24 right-4 z-50 w-11 h-11 bg-primary/90 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 transition-all hover:-translate-y-1 animate-fade-in"><Icon name="arrow-up" weight="bold" size={20}/></button>);
     };
+
     const ImageModal = ({ isOpen, onClose, imageUrl }) => {
       useScrollLock(isOpen); if (!isOpen || !imageUrl) return null;
       return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}><div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute -top-12 right-0 md:-right-12 text-white hover:text-gray-300 transition p-2 bg-black/20 rounded-full"><Icon name="x" size={24} weight="bold"/></button><img src={imageUrl} alt="Preview" className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain bg-white" /></div></div>, document.body
       );
     };
+
     const Modal = ({ isOpen, onClose, title, children, hideClose = false, zIndex = "z-[110]" }) => {
       useScrollLock(isOpen); if (!isOpen) return null;
       return ReactDOM.createPortal(
         <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in`}><div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform transition-all scale-100 animate-scale-in max-h-[90vh] flex flex-col">{!hideClose && (<div className="flex justify-between items-center p-4 border-b border-gray-100 bg-white flex-shrink-0"><h3 className="font-bold text-lg text-gray-800">{title}</h3><button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:text-red-500 transition-colors"><Icon name="x" size={20} weight="bold" /></button></div>)}<div className="p-4 overflow-y-auto flex-1">{children}</div></div></div>, document.body
       );
     };
+
     const ErrorModal = ({ isOpen, onClose, message }) => {
       useScrollLock(isOpen); if (!isOpen) return null;
       return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-shake text-center border-t-4 border-red-500"><div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse"><Icon name="warning-circle" size={32} weight="fill" className="text-red-500" /></div><h3 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3><p className="text-sm text-gray-500 mb-6 font-medium text-red-600">{message}</p><button onClick={onClose} className="w-full py-3 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition">ตกลง</button></div></div>, document.body
       );
     };
+
     const SuccessScreen = () => (<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm"><div className="bg-white rounded-3xl p-8 flex flex-col items-center justify-center shadow-2xl animate-scale-in min-w-[200px]"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4 animate-check-bounce"><Icon name="check" size={48} weight="bold" className="text-green-600" /></div><h3 className="text-xl font-bold text-gray-800">เรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">บันทึกข้อมูลสำเร็จแล้ว</p></div></div>);
 
     const StudentMultiSelect = ({ students, selectedIds, onChange }) => {
@@ -543,394 +551,46 @@
         );
     };
 
-    // --- OTHER SUB-VIEWS ---
-    const PendingView = ({ data, setSelectedBill }) => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const [sortOrder, setSortOrder] = useState('newest');
+    const LoginScreen = ({ onLogin }) => {
+      const [pin, setPin] = useState('');
+      const [error, setError] = useState(false);
+      const [loading, setLoading] = useState(false);
 
-        const pendingBills = useMemo(() => {
-          let bills = data.bills.filter(b => b.status === 'รอตรวจสอบ');
-          if(searchTerm) { const lower = searchTerm.toLowerCase(); bills = bills.filter(b => String(b.item).toLowerCase().includes(lower) || String(b.billId).toLowerCase().includes(lower) || String(b.studentId).toLowerCase().includes(lower)); }
-          return sortOrder === 'newest' ? [...bills].reverse() : bills;
-        }, [data.bills, searchTerm, sortOrder]);
+      useEffect(() => {
+          const handleKeyDown = (e) => {
+              if (loading) return;
+              if (e.key >= '0' && e.key <= '9') setPin(prev => prev.length < 6 ? prev + e.key : prev);
+              else if (e.key === 'Backspace') setPin(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [loading]);
 
-        return (
-          <div className="space-y-5 pb-24 relative">
-             <ScrollToTopBottom />
-             <div className="bg-amber-500 rounded-2xl p-5 text-white shadow-lg shadow-amber-200 relative overflow-hidden"><div className="absolute top-0 right-0 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl -translate-y-6 translate-x-6"></div><div className="relative z-10 flex justify-between items-center"><div><h2 className="text-xl font-bold flex items-center gap-2"><div className="bg-white/20 p-1.5 rounded-lg animate-pulse"><Icon name="clock-clockwise" weight="fill" /></div>รอตรวจสอบ</h2><p className="text-amber-100 text-xs mt-1">รายการที่แจ้งโอนแล้ว รอแอดมินยืนยัน</p></div><div className="text-right"><span className="text-3xl font-bold">{pendingBills.length}</span><span className="text-xs block opacity-80">รายการ</span></div></div></div>
-             <div className="flex gap-3 sticky top-0 z-20 bg-background py-2"><div className="flex-1 bg-white rounded-xl card-shadow border border-gray-100 flex items-center px-4 py-2.5 transition focus-within:ring-2 focus-within:ring-amber-400/30"><Icon name="magnifying-glass" className="text-gray-400 mr-3" size={18} /><input type="text" placeholder="ค้นหาชื่อ, รหัส..." className="w-full bg-transparent text-sm font-medium text-gray-700 outline-none placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>{searchTerm && <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 ml-2"><Icon name="x-circle" weight="fill" /></button>}</div><button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-gray-500 hover:bg-gray-50 transition active:scale-95"><Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20} /></button></div>
-             <div className="space-y-3">
-              {pendingBills.map((bill, idx) => {
-                const fine = calculateFine(bill);
-                const studentName = data.students.find(s => s.id === bill.studentId)?.name || '';
-                const netTotal = Number(bill.amount) + fine - Number(bill.discount || 0);
-                return (
-                  <div key={idx} onClick={() => setSelectedBill(bill)} className="group relative bg-white rounded-2xl p-4 card-shadow border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.98]"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0 animate-pulse"><Icon name="hourglass-high" weight="fill" size={24} /></div><div className="flex-1 min-w-0 flex justify-between"><div className="flex-1 min-w-0 mr-2"><div className="flex items-center gap-2 mb-1"><span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded">{bill.studentId}</span><span className="text-sm font-bold text-gray-800 truncate">{studentName}</span></div><h4 className="text-gray-600 text-sm font-medium mb-2 line-clamp-1">{bill.item}</h4><div className="flex items-center gap-3 text-xs text-gray-400"><div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg"><Icon name="calendar-blank" weight="bold" className="text-amber-400"/><span>{formatDate(bill.dueDate)}</span></div>{fine > 0 && (<span className="text-red-500 font-bold ml-1">+{fine} ค่าปรับ</span>)}</div></div><div className="flex flex-col items-end justify-between flex-shrink-0"><div className="text-right"><div className="text-lg font-extrabold text-amber-600">฿{netTotal.toLocaleString()}</div>{bill.discount > 0 && <div className="text-[10px] text-gray-400 line-through">฿{Number(bill.amount).toLocaleString()}</div>}</div><span className="text-[10px] bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold flex items-center gap-1">แตะเพื่อตรวจ <Icon name="caret-right" weight="bold"/></span></div></div></div></div>
-                );
-              })}
-              {pendingBills.length === 0 && (<div className="flex flex-col items-center justify-center py-16 text-gray-300 animate-fade-in"><div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-4"><Icon name="check-fat" size={40} className="text-green-400" weight="fill" /></div><h3 className="text-lg font-bold text-gray-700">เยี่ยมมาก!</h3><p className="text-sm font-medium text-gray-400">ไม่มีรายการรอตรวจสอบแล้ว</p></div>)}
-             </div>
-          </div>
-        );
-    };
-
-    const BillView = ({ data, setSelectedBill, setIsCreateModalOpen, searchTerm, setSearchTerm, filter, onFilterChange }) => {
-        const [sortOrder, setSortOrder] = useState('newest');
-        const [isSummaryOpen, setIsSummaryOpen] = useState(false);
-
-        const counts = useMemo(() => {
-            const today = new Date(); today.setHours(0,0,0,0);
-            return {
-                all: data.bills.length,
-                pending: data.bills.filter(b => b.status === 'รอตรวจสอบ').length,
-                paid: data.bills.filter(b => b.status === 'ชำระแล้ว').length,
-                unpaid: data.bills.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ').length,
-                overdue: data.bills.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; const due = new Date(b.dueDate); due.setHours(0,0,0,0); return due < today; }).length
-            };
-        }, [data.bills]);
-
-        const tabs = [ { id: 'all', label: 'ทั้งหมด', color: 'text-gray-600' }, { id: 'paid', label: 'เรียบร้อย', color: 'text-emerald-600' }, { id: 'unpaid', label: 'ค้างจ่าย', color: 'text-blue-600' }, { id: 'overdue', label: 'เกินกำหนด', color: 'text-red-600' }, { id: 'pending', label: 'รอตรวจ', color: 'text-amber-600' } ];
-
-        const filteredBills = useMemo(() => {
-          let res = data.bills; const today = new Date(); today.setHours(0,0,0,0);
-          if (filter === 'pending') res = res.filter(b => b.status === 'รอตรวจสอบ');
-          if (filter === 'paid') res = res.filter(b => b.status === 'ชำระแล้ว');
-          if (filter === 'unpaid') res = res.filter(b => !b.status || b.status === '' || b.status === 'ค้างชำระ'); 
-          if (filter === 'overdue') res = res.filter(b => { if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; const due = new Date(b.dueDate); due.setHours(0,0,0,0); return due < today; });
-          if (searchTerm) { const lower = searchTerm.toLowerCase(); res = res.filter(b => String(b.item).toLowerCase().includes(lower) || String(b.billId).toLowerCase().includes(lower) || String(b.studentId).toLowerCase().includes(lower)); }
-          return sortOrder === 'newest' ? [...res].reverse() : res;
-        }, [data.bills, filter, searchTerm, sortOrder]);
-
-        const getStatusDisplay = (status, isOverdue) => {
-            if (status === 'ชำระแล้ว') return { icon: 'check-circle', text: 'ชำระแล้ว', color: 'bg-emerald-100 text-emerald-700 border border-emerald-200' };
-            if (status === 'รอตรวจสอบ') return { icon: 'clock-clockwise', text: 'รอตรวจสอบ', color: 'bg-amber-100 text-amber-700 border border-amber-200' };
-            if (status === 'ยกเลิก') return { icon: 'prohibit', text: 'ยกเลิก', color: 'bg-gray-100 text-gray-500 border border-gray-200' };
-            if (isOverdue) return { icon: 'warning-circle', text: 'เกินกำหนด', color: 'bg-red-50 text-red-600 border border-red-100' };
-            return { icon: 'hourglass', text: 'ค้างชำระ', color: 'bg-blue-50 text-blue-600 border border-blue-100' };
-        };
-
-        const getMajorStatusIcon = (bill, isOverdue) => {
-            if (bill.status === 'ชำระแล้ว') return { bg: 'bg-emerald-100', text: 'text-emerald-600', icon: 'check-circle' };
-            if (bill.status === 'รอตรวจสอบ') return { bg: 'bg-amber-100', text: 'text-amber-600', icon: 'clock-clockwise' };
-            if (bill.status === 'ยกเลิก') return { bg: 'bg-gray-100', text: 'text-gray-400', icon: 'prohibit' };
-            if (isOverdue) return { bg: 'bg-red-100', text: 'text-red-600', icon: 'warning-circle' };
-            return { bg: 'bg-blue-100', text: 'text-blue-600', icon: 'receipt' };
-        };
-
-        return (
-          <div className="space-y-5 pb-24 relative">
-            <ScrollToTopBottom />
-            <div className="flex items-center justify-between px-2"><div><h2 className="text-xl font-bold text-gray-800">รายการเรียกเก็บ</h2><p className="text-xs text-gray-400">จัดการบิลค่าใช้จ่ายต่างๆ</p></div><button onClick={() => setIsCreateModalOpen(true)} className="px-4 py-2.5 bg-primary text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition flex items-center gap-2"><Icon name="plus-circle" weight="bold" size={20}/> <span className="font-bold text-sm">สร้างบิล</span></button></div>
-            <div className="bg-white p-1.5 rounded-2xl card-shadow border border-gray-100 flex overflow-x-auto no-scrollbar gap-1">{tabs.map(tab => { const isActive = filter === tab.id; return (<button key={tab.id} onClick={() => onFilterChange(tab.id)} className={`flex-1 min-w-[80px] py-2 px-3 rounded-xl flex flex-col items-center justify-center transition-all duration-300 relative ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}`}><span className={`text-lg font-bold ${isActive ? tab.color : 'text-gray-400'}`}>{counts[tab.id]}</span><span className={`text-[10px] font-medium ${isActive ? 'text-gray-700' : 'text-gray-400'}`}>{tab.label}</span>{isActive && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-primary"></div>}</button>); })}</div>
-            <div className="flex gap-3 items-center sticky top-0 z-20 bg-background py-2"><div className="flex-1 relative"><div className="bg-white rounded-xl card-shadow border border-gray-100 flex items-center px-4 py-2.5 transition focus-within:ring-2 focus-within:ring-primary/20"><Icon name="magnifying-glass" className="text-gray-400 mr-3" size={18} /><input type="text" placeholder="ค้นหาชื่อ, รหัส, รายการ..." className="w-full bg-transparent text-sm font-medium text-gray-700 outline-none placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>{searchTerm && <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 ml-2"><Icon name="x-circle" weight="fill" /></button>}</div></div><button onClick={() => setIsSummaryOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-blue-600 hover:bg-blue-50 transition active:scale-95" title="สรุปยอด"><Icon name="chart-pie-slice" weight="duotone" size={24}/></button><button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-gray-500 hover:bg-gray-50 transition active:scale-95"><Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20} /></button></div>
-            <div className="space-y-3">
-              {filteredBills.map((bill, idx) => {
-                const fine = calculateFine(bill); 
-                const studentName = data.students.find(s => s.id === bill.studentId)?.name || ''; 
-                const isOverdue = (bill.dueDate && new Date(bill.dueDate) < new Date() && bill.status !== 'ชำระแล้ว');
-                const netTotal = Number(bill.amount) + fine - Number(bill.discount || 0);
-                const statusInfo = getStatusDisplay(bill.status, isOverdue); 
-                const majorIconStyle = getMajorStatusIcon(bill, isOverdue);
-                return (
-                    <div key={idx} onClick={() => setSelectedBill(bill)} className="group relative bg-white rounded-2xl p-4 card-shadow border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
-                        <div className="flex items-start gap-4">
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${majorIconStyle.bg} ${majorIconStyle.text}`}><Icon name={majorIconStyle.icon} weight="fill" size={24} /></div>
-                            <div className="flex-1 min-w-0 flex justify-between">
-                                <div className="flex-1 min-w-0 mr-2">
-                                    <div className="flex items-center gap-2 mb-1"><span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded">{bill.studentId}</span><span className="text-sm font-bold text-gray-800 truncate">{studentName}</span></div>
-                                    <h4 className="text-gray-600 text-sm font-medium mb-2 line-clamp-1">{bill.item}</h4>
-                                    <div className="flex items-center gap-3 text-xs text-gray-400">
-                                        <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg"><Icon name="calendar-blank" weight="bold" className={isOverdue ? "text-red-400" : "text-gray-400"}/><span className={isOverdue ? "text-red-500 font-bold" : ""}>{formatDate(bill.dueDate)}</span></div>
-                                        {fine > 0 && (<span className="text-red-500 font-bold flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg"><Icon name="warning" weight="fill" size={12}/> +{fine.toLocaleString()}</span>)}
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end justify-between flex-shrink-0">
-                                    <div className="text-right">
-                                        <div className="text-lg font-extrabold text-primary">฿{netTotal.toLocaleString()}</div>
-                                        {bill.discount > 0 && <div className="text-[10px] text-gray-400 line-through">฿{Number(bill.amount).toLocaleString()}</div>}
-                                    </div>
-                                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 ${statusInfo.color}`}><Icon name={statusInfo.icon} weight="fill" size={14} />{bill.status || statusInfo.text}</span>
-                                </div>
-                            </div>
-                        </div><div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="caret-right" className="text-gray-300" size={24}/></div>
-                    </div>
-                );
-              })}
-              {filteredBills.length === 0 && (<div className="flex flex-col items-center justify-center py-16 text-gray-300 animate-fade-in"><div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3"><Icon name="receipt" size={32} className="opacity-40"/></div><p className="text-sm font-medium">ไม่พบรายการบิล</p></div>)}
-            </div>
-            <BillSummaryModal isOpen={isSummaryOpen} onClose={() => setIsSummaryOpen(false)} bills={filteredBills} history={data.history} />
-          </div>
-        );
-    };
-
-    const HistoryView = ({ data, onDeleteHistory, onViewSlip }) => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const [sortOrder, setSortOrder] = useState('newest');
-        const [isDateFilterActive, setIsDateFilterActive] = useState(false);
-        const [dateFilter, setDateFilter] = useState(() => { const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); return { start: formatDateForInput(start), end: formatDateForInput(end) }; });
-
-        const formatDateTime = (dateInput) => {
-            if (!dateInput) return '-'; let dateObj;
-            if (typeof dateInput === 'string' && dateInput.includes('/')) {
-                try { const [dPart, tPart] = dateInput.split(', '); const [day, month, year] = dPart.split('/'); const [hour, minute] = tPart ? tPart.split(':') : [0, 0]; dateObj = new Date(year, month - 1, day, hour, minute); } catch (e) { dateObj = new Date(dateInput); }
-            } else { dateObj = new Date(dateInput); }
-            if (isNaN(dateObj.getTime())) return dateInput;
-            return dateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-        };
-
-        const parseDateForSort = (dateInput) => {
-            if (!dateInput) return 0;
-            if (typeof dateInput === 'string' && dateInput.includes('/')) {
-                try { const [dPart, tPart] = dateInput.split(', '); const [day, month, year] = dPart.split('/'); const [hour, minute, second] = tPart ? tPart.split(':') : [0, 0, 0]; return new Date(year, month - 1, day, hour, minute, second).getTime(); } catch (e) { return new Date(dateInput).getTime(); }
-            }
-            return new Date(dateInput).getTime();
-        };
-
-        const handleDateChange = (type, value) => { setDateFilter(prev => ({ ...prev, [type]: value })); };
-        const isDateInRange = (targetDate, start, end) => {
-            if (!targetDate) return false; const target = parseDateForSort(targetDate);
-            const s = new Date(start).setHours(0,0,0,0); const e = new Date(end).setHours(23,59,59,999);
-            return target >= s && target <= e;
-        };
-
-        const filteredHistory = useMemo(() => {
-          let res = data.history;
-          const getDate = (item) => item.timestamp || item.payDate;
-          if (isDateFilterActive) { res = res.filter(h => isDateInRange(getDate(h), dateFilter.start, dateFilter.end)); }
-          if (searchTerm) { const term = searchTerm.toLowerCase(); res = res.filter(h => String(h.studentId).toLowerCase().includes(term) || String(h.name).toLowerCase().includes(term) || String(h.billId).toLowerCase().includes(term) || String(h.item).toLowerCase().includes(term) ); }
-          return sortOrder === 'newest' ? [...res].sort((a, b) => parseDateForSort(getDate(b)) - parseDateForSort(getDate(a))) : [...res].sort((a, b) => parseDateForSort(getDate(a)) - parseDateForSort(getDate(b)));
-        }, [data.history, searchTerm, sortOrder, dateFilter, isDateFilterActive]);
-
-        const totalAmount = useMemo(() => { return filteredHistory.reduce((sum, item) => sum + (Number(item.total) || Number(item.amount) || 0), 0); }, [filteredHistory]);
-
-        return (
-          <div className="space-y-5 pb-24 animate-fade-in">
-            <ScrollToTopBottom />
-            <div className="bg-white rounded-3xl p-5 card-shadow border border-gray-100 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -translate-y-10 translate-x-10 opacity-60"></div>
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <div><h2 className="text-gray-500 font-bold text-xs uppercase tracking-wider mb-1">ยอดรวมที่ชำระแล้ว</h2><div className="text-3xl font-extrabold text-gray-800 tracking-tight">฿{totalAmount.toLocaleString()}</div></div>
-                        <div className="text-right"><div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm"><Icon name="list-checks" weight="bold"/> {filteredHistory.length} รายการ</div></div>
-                    </div>
-                    <div className="space-y-3">
-                        <div className="relative"><Icon name="magnifying-glass" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/><input type="text" placeholder="ค้นหาชื่อ, รหัสนักศึกษา..." className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 transition" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>{searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><Icon name="x-circle" weight="fill" /></button>}</div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="flex items-center gap-1 px-3 py-2 bg-gray-50 text-gray-500 rounded-xl text-xs font-bold hover:bg-gray-100 transition"><Icon name="arrows-down-up" weight="bold"/> {sortOrder === 'newest' ? 'ใหม่ล่าสุด' : 'เก่าสุด'}</button>
-                            <button onClick={() => setIsDateFilterActive(!isDateFilterActive)} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition ${isDateFilterActive ? 'bg-primary text-white shadow-lg shadow-blue-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}><Icon name="calendar" weight={isDateFilterActive ? 'fill' : 'bold'}/> {isDateFilterActive ? 'ปิดตัวกรองวันที่' : 'กรองวันที่'}</button>
-                        </div>
-                        <div className={`overflow-hidden transition-all duration-300 ${isDateFilterActive ? 'max-h-24 opacity-100 pt-1' : 'max-h-0 opacity-0'}`}>
-                            <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 grid grid-cols-2 gap-3">
-                                <div><label className="text-[10px] font-bold text-blue-400 mb-1 block">เริ่ม</label><input type="date" value={dateFilter.start} onChange={e => handleDateChange('start', e.target.value)} className="w-full text-xs p-1.5 rounded-lg border-none bg-white text-gray-600 outline-none"/></div>
-                                <div><label className="text-[10px] font-bold text-blue-400 mb-1 block">สิ้นสุด</label><input type="date" value={dateFilter.end} onChange={e => handleDateChange('end', e.target.value)} className="w-full text-xs p-1.5 rounded-lg border-none bg-white text-gray-600 outline-none"/></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div className="space-y-3">
-              {filteredHistory.map((item, idx) => (
-                <div key={idx} className="bg-white p-4 rounded-2xl card-shadow border border-gray-100 relative group hover:border-blue-200 transition-all">
-                    <button onClick={() => onDeleteHistory(item.billId)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-colors z-10"><Icon name="trash" size={16} weight="bold" /></button>
-                    <div className="flex gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center flex-shrink-0"><Icon name="check-circle" size={24} weight="fill"/></div>
-                        <div className="flex-1 min-w-0 pr-8">
-                            <div className="flex justify-between items-baseline mb-1"><h4 className="font-bold text-gray-800 text-sm truncate">{item.item}</h4></div>
-                            <div className="flex items-center gap-2 mb-2"><span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded-md truncate max-w-[120px]">{item.name}</span><span className="text-[10px] text-gray-400 font-mono">#{item.studentId}</span></div>
-                            <div className="flex items-end justify-between border-t border-dashed border-gray-100 pt-2 mt-2">
-                                <div className="text-xs text-gray-400 flex items-center gap-1 font-medium"><Icon name="clock" weight="fill" className="text-gray-300"/> {formatDateTime(item.timestamp || item.payDate)}</div>
-                                <div className="flex items-center gap-3">
-                                    {item.slipUrl && (<button onClick={() => onViewSlip(item.slipUrl)} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 transition flex items-center gap-1"><Icon name="image" weight="bold"/> สลิป</button>)}
-                                    <span className="font-bold text-emerald-600 text-lg">฿{Number(item.total || item.amount).toLocaleString()}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-              ))}
-              {filteredHistory.length === 0 && (<div className="flex flex-col items-center justify-center py-16 text-gray-300"><div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4"><Icon name="clipboard-text" size={40} className="opacity-50" weight="duotone" /></div><p className="text-sm font-medium">ไม่พบข้อมูลประวัติในช่วงนี้</p></div>)}
-            </div>
-          </div>
-        );
-    };
-
-    const StudentView = ({ data, setIsStudentModalOpen, setSelectedStudent, handleDeleteStudent, onViewBills }) => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const filteredStudents = useMemo(() => {
-            if (!searchTerm) return data.students;
-            const lower = searchTerm.toLowerCase();
-            return data.students.filter(s => String(s.id).toLowerCase().includes(lower) || String(s.name).toLowerCase().includes(lower));
-        }, [data.students, searchTerm]);
-
-        const stats = useMemo(() => {
-            const total = data.students.length;
-            const linked = data.students.filter(s => s.userId && String(s.userId).trim() !== '').length;
-            const overdueUsers = data.students.filter(s => {
-                return data.bills.some(b => {
-                    if (b.studentId !== s.id) return false;
-                    if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false;
-                    if (!b.dueDate) return false;
-                    const due = new Date(b.dueDate); due.setHours(0,0,0,0);
-                    const today = new Date(); today.setHours(0,0,0,0);
-                    return due < today;
-                });
-            }).length;
-            return { total, linked, overdueUsers };
-        }, [data.students, data.bills]);
-
-        const getAvatarColor = (id) => {
-            const colors = ['bg-blue-100 text-blue-600', 'bg-indigo-100 text-indigo-600', 'bg-purple-100 text-purple-600', 'bg-pink-100 text-pink-600', 'bg-orange-100 text-orange-600', 'bg-slate-100 text-slate-600'];
-            const index = String(id).charCodeAt(0) % colors.length;
-            return colors[index];
-        };
-
-        return (
-          <div className="space-y-5 pb-24 relative">
-             <ScrollToTopBottom />
-             <div className="px-2">
-                 <div className="flex justify-between items-center mb-3"><h2 className="text-xl font-bold text-gray-800">รายชื่อผู้ใช้</h2><button onClick={() => { setSelectedStudent(null); setIsStudentModalOpen(true); }} className="w-10 h-10 bg-primary text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 flex items-center justify-center transition active:scale-95"><Icon name="plus" weight="bold" size={20}/></button></div>
-                 <div className="grid grid-cols-3 gap-2">
-                     <div className="bg-white p-3 rounded-xl card-shadow border border-gray-100 text-center"><div className="text-[10px] font-bold text-gray-400 uppercase">ทั้งหมด</div><div className="text-xl font-extrabold text-gray-800">{stats.total}</div></div>
-                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center"><div className="text-[10px] font-bold text-green-600 uppercase">เชื่อม LINE</div><div className="text-xl font-extrabold text-green-700">{stats.linked}</div></div>
-                     <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center"><div className="text-[10px] font-bold text-red-600 uppercase">ค้างเกินกำหนด</div><div className="text-xl font-extrabold text-red-700">{stats.overdueUsers}</div></div>
-                 </div>
-             </div>
-             <div className="sticky top-0 z-20 bg-background py-2">
-                 <div className="bg-white rounded-xl card-shadow border border-gray-100 flex items-center px-4 py-2.5 transition focus-within:ring-2 focus-within:ring-primary/20"><Icon name="magnifying-glass" className="text-gray-400 mr-3" size={18} /><input type="text" placeholder="ค้นหาชื่อ, รหัสนักศึกษา..." className="w-full bg-transparent text-sm font-medium text-gray-700 outline-none placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>{searchTerm && <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600 ml-2"><Icon name="x-circle" weight="fill" /></button>}</div>
-             </div>
-             <div className="space-y-3">
-                 {filteredStudents.map((stu, i) => {
-                    const isLinked = stu.userId && String(stu.userId).trim() !== ''; 
-                    const hasPassword = stu.password && String(stu.password).trim() !== '';
-                    const hasOverdueBill = data.bills.some(b => { if (b.studentId !== stu.id) return false; if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false; if (!b.dueDate) return false; const due = new Date(b.dueDate); due.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0); return due < today; });
-                    const hasIssue = !isLinked || !hasPassword || hasOverdueBill;
-
-                    return (
-                        <div key={i} className="group bg-white rounded-2xl p-4 card-shadow border border-gray-100 relative overflow-hidden transition hover:shadow-md">
-                            {hasIssue && (<div className="absolute inset-0 border-[3px] border-red-400 rounded-2xl animate-pulse pointer-events-none z-10 opacity-50"></div>)}
-                            <div className="flex gap-4 relative z-0">
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold flex-shrink-0 ${getAvatarColor(stu.id)}`}>{stu.name.charAt(0).toUpperCase()}</div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start">
-                                        <div><h4 className="font-bold text-gray-800 text-base truncate">{stu.name}</h4><p className="text-xs text-gray-400 font-mono mt-0.5">{stu.id}</p></div>
-                                        <div className="flex gap-1">
-                                            {hasOverdueBill && (<div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="มีหนี้เกินกำหนด"><Icon name="warning-circle" weight="fill" size={16}/></div>)}
-                                            {!hasPassword && (<div className="w-7 h-7 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center shadow-sm" title="ยังไม่มีรหัสผ่าน"><Icon name="key" weight="fill" size={16}/></div>)}
-                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${isLinked ? 'bg-green-100 text-green-500' : 'bg-red-100 text-red-500'}`} title={isLinked ? 'เชื่อม LINE แล้ว' : 'ยังไม่เชื่อม LINE'}><Icon name={isLinked ? "line-logo" : "link-break"} weight="fill" size={16}/></div>
-                                        </div>
-                                    </div>
-                                    {(hasIssue) && (
-                                        <div className="flex flex-wrap gap-1 mt-2">
-                                            {hasOverdueBill && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100"><Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ</span>}
-                                            {!isLinked && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100"><Icon name="link-break" weight="bold" size={10}/> ขาด LINE ID</span>}
-                                            {!hasPassword && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100"><Icon name="key" weight="bold" size={10}/> ขาดรหัส</span>}
-                                        </div>
-                                    )}
-                                    <div className="flex gap-2 mt-3 pt-3 border-t border-dashed border-gray-100 relative z-20">
-                                        <button onClick={() => onViewBills(stu.id)} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1"><Icon name="receipt" weight="bold"/> ดูบิล</button>
-                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="w-8 h-8 flex items-center justify-center bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-100 transition"><Icon name="pencil-simple" weight="bold" size={16}/></button>
-                                        <button onClick={() => handleDeleteStudent(stu.id)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition"><Icon name="trash" weight="bold" size={16}/></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                 })}
-                 {filteredStudents.length === 0 && (<div className="flex flex-col items-center justify-center py-16 text-gray-300"><div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3"><Icon name="users" size={32} className="opacity-40"/></div><p className="text-sm font-medium">ไม่พบรายชื่อผู้ใช้</p></div>)}
-             </div>
-          </div>
-        );
-    };
-
-    const FinanceView = ({ data, onSave, onDelete, onViewImage, loading }) => {
-      const [selectedProject, setSelectedProject] = useState(null);
-      const [isFormOpen, setIsFormOpen] = useState(false);
-      const [editingLog, setEditingLog] = useState(null);
-      const [defaultProj, setDefaultProj] = useState('');
-
-      const financeData = Array.isArray(data.finance) ? data.finance : [];
-
-      const projects = useMemo(() => {
-        const map = {}; let totalInc = 0; let totalExp = 0;
-        financeData.forEach(log => {
-          if (!log.id || !log.project || String(log.project).trim() === '') return;
-          const pName = String(log.project).trim();
-          if (!map[pName]) map[pName] = { name: pName, income: 0, expense: 0, count: 0, logs: [] };
-          const amt = Number(log.amount) || 0;
-          if (log.type === 'รายรับ') { map[pName].income += amt; totalInc += amt; } else { map[pName].expense += amt; totalExp += amt; }
-          map[pName].count++; map[pName].logs.push(log);
-        });
-        const validProjects = Object.values(map);
-        const sortedProjects = validProjects.sort((a, b) => b.count - a.count);
-        return { list: sortedProjects, totalIncome: totalInc, totalExpense: totalExp, totalBalance: totalInc - totalExp };
-      }, [financeData]);
-
-      const handleAddClick = (projName = '') => { setEditingLog(null); setDefaultProj(projName); setIsFormOpen(true); };
-      const handleEditClick = (log) => { setEditingLog(log); setDefaultProj(''); setIsFormOpen(true); };
+      useEffect(() => {
+          if (pin.length === 6) {
+              setLoading(true);
+              db.collection('config').doc('system').get().then(doc => {
+                  const correctPin = doc.exists && doc.data().adminPin ? String(doc.data().adminPin) : '000000';
+                  if (pin === correctPin) onLogin();
+                  else { setError(true); setLoading(false); setTimeout(() => { setPin(''); setError(false); }, 600); }
+              }).catch(() => { setError(true); setLoading(false); setTimeout(() => { setPin(''); setError(false); }, 600); });
+          }
+      }, [pin, onLogin]);
 
       return (
-        <div className="space-y-5 pb-24 relative animate-fade-in">
-          <ScrollToTopBottom />
-          {!selectedProject && (
-            <>
-              <div className="flex justify-between items-center px-2 pt-2"><div><h2 className="text-2xl font-bold text-gray-800 tracking-tight">งบประมาณชั้นปี</h2><p className="text-xs font-medium text-gray-400 mt-0.5">ภาพรวมรายรับ-รายจ่าย</p></div><button onClick={() => handleAddClick('')} className="w-11 h-11 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl shadow-lg shadow-blue-200 hover:shadow-blue-300 flex items-center justify-center transition hover:-translate-y-1 active:translate-y-0"><Icon name="plus" weight="bold" size={24}/></button></div>
-              <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500 opacity-20 rounded-full blur-3xl -translate-y-10 translate-x-10"></div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1 relative z-10">ยอดคงเหลือรวม</p>
-                <h2 className="text-4xl font-black tracking-tight mb-5 relative z-10">฿{projects.totalBalance.toLocaleString()}</h2>
-                <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5 relative z-10">
-                  <div><p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 uppercase tracking-wide"><Icon name="trend-up" weight="bold"/> รายรับรวม</p><p className="text-xl font-bold text-white mt-1">฿{projects.totalIncome.toLocaleString()}</p></div>
-                  <div><p className="text-[10px] text-red-400 font-bold flex items-center gap-1 uppercase tracking-wide"><Icon name="trend-down" weight="bold"/> รายจ่ายรวม</p><p className="text-xl font-bold text-white mt-1">฿{projects.totalExpense.toLocaleString()}</p></div>
-                </div>
+        <div className="fixed inset-0 z-[1000] bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+           <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none"><div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 opacity-10 rounded-full blur-3xl animate-pulse"></div><div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 opacity-10 rounded-full blur-3xl animate-pulse delay-700"></div></div>
+           <div className="w-full max-w-sm relative z-10 flex flex-col items-center animate-scale-in">
+              <div className="mb-8 text-center"><div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl mb-4 border border-white/10"><Icon name="lock-key" weight="fill" size={36} /></div><h1 className="text-2xl font-bold text-white tracking-wider">ใส่รหัส PIN</h1><p className="text-blue-200 text-xs mt-1 font-medium">สามารถพิมพ์ตัวเลขจากคีย์บอร์ดได้เลย</p></div>
+              <div className={`flex gap-4 mb-8 transition-transform duration-300 ${error ? 'animate-shake' : ''}`}>{[...Array(6)].map((_, i) => (<div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${i < pin.length ? 'bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] scale-110' : 'bg-white/20 scale-100'}`}></div>))}</div>
+              <div className="h-6 mb-2">{error && <p className="text-red-400 text-sm font-bold animate-fade-in flex items-center gap-1"><Icon name="warning-circle" weight="fill"/> รหัสไม่ถูกต้อง</p>}</div>
+              <div className="grid grid-cols-3 gap-4 w-full px-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (<button key={num} onClick={() => { if (pin.length < 6) setPin(prev => prev + num); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">{num}</button>))}
+                  <div></div>
+                  <button onClick={() => { if (pin.length < 6) setPin(prev => prev + 0); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg">0</button>
+                  <button onClick={() => { if(pin.length>0) setPin(p=>p.slice(0,-1)); setError(false); }} disabled={loading} className="w-full aspect-square rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center"><Icon name="backspace" weight="bold" size={28} /></button>
               </div>
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-gray-500 px-2 mt-2 flex items-center gap-2"><Icon name="folder-open" weight="duotone"/> โครงการที่กำลังดำเนินงาน</h3>
-                {projects.list.map((p, idx) => {
-                  const pBalance = p.income - p.expense;
-                  return (
-                    <div key={idx} onClick={() => setSelectedProject(p)} className="bg-white rounded-[1.5rem] p-5 card-shadow border border-gray-100 cursor-pointer hover:shadow-xl hover:border-blue-200 transition-all duration-300 group flex items-center justify-between relative overflow-hidden">
-                      <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-20 transition-all duration-500 group-hover:scale-150 ${pBalance >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                      <div className="flex items-center gap-4 relative z-10">
-                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner flex-shrink-0 ${pBalance >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}><Icon name={pBalance >= 0 ? 'trend-up' : 'trend-down'} weight="fill" size={28}/></div>
-                        <div className="min-w-0 pr-2">
-                          <h4 className="font-extrabold text-gray-800 text-base group-hover:text-primary transition-colors truncate">{p.name}</h4>
-                          <div className="text-[11px] font-bold text-gray-400 mt-1 flex gap-3 whitespace-nowrap">
-                            {p.income > 0 && <span className="flex items-center gap-1"><Icon name="arrow-down-left" weight="bold" className="text-emerald-500"/> รับ: {p.income.toLocaleString()}</span>}
-                            {p.expense > 0 && <span className="flex items-center gap-1"><Icon name="arrow-up-right" weight="bold" className="text-red-400"/> จ่าย: {p.expense.toLocaleString()}</span>}
-                            {p.income === 0 && p.expense === 0 && <span className="text-gray-300">ไม่มีการเคลื่อนไหว</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right relative z-10 flex flex-col items-end flex-shrink-0 pl-2">
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">คงเหลือ</p><p className={`text-xl font-black tracking-tight ${pBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>฿{pBalance.toLocaleString()}</p>
-                        <div className="mt-1 w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors"><Icon name="caret-right" weight="bold" size={12}/></div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {projects.list.length === 0 && (<div className="text-center py-16 bg-gray-50 rounded-[2rem] border-2 border-dashed border-gray-200"><Icon name="wallet" size={48} className="opacity-20 mb-3 mx-auto" weight="duotone"/><p className="text-sm font-bold text-gray-500">ไม่มีโครงการที่มียอดคงเหลือ</p><p className="text-xs font-medium text-gray-400 mt-1">เริ่มเพิ่มรายการเพื่อสร้างโครงการแรก</p></div>)}
-              </div>
-            </>
-          )}
-          {selectedProject && (
-            <div className="animate-fade-in space-y-4">
-              <button onClick={() => setSelectedProject(null)} className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-primary transition mb-2"><Icon name="arrow-left" weight="bold"/> ย้อนกลับ</button>
-              <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-[2rem] card-shadow border border-gray-100 text-white relative overflow-hidden">
-                <div className="absolute -right-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div><h3 className="text-2xl font-extrabold mb-1 relative z-10">{selectedProject.name}</h3>
-                <div className="flex gap-4 text-xs font-bold border-t border-white/10 pt-4 mt-3 relative z-10 items-center justify-between"><span className="text-gray-300 uppercase tracking-wider text-[10px]">ยอดคงเหลือโครงการ</span><span className={selectedProject.income - selectedProject.expense >= 0 ? 'text-emerald-400 text-2xl tracking-tight' : 'text-red-400 text-2xl tracking-tight'}>฿{(selectedProject.income - selectedProject.expense).toLocaleString()}</span></div>
-              </div>
-              <div className="flex justify-between items-end px-2 pt-2"><div><h4 className="text-sm font-bold text-gray-800">รายการบันทึก</h4><p className="text-[10px] text-gray-400 font-medium">ทั้งหมด {selectedProject.logs.length} รายการ</p></div><button onClick={() => handleAddClick(selectedProject.name)} className="text-[11px] font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-1 active:scale-95"><Icon name="plus" weight="bold"/> เพิ่มรายการ</button></div>
-              <div className="space-y-3">
-                {selectedProject.logs.slice().reverse().map((log, i) => (
-                  <div key={i} className="bg-white p-4 rounded-2xl card-shadow border border-gray-100 hover:shadow-md transition relative group">
-                    <div className="flex justify-between items-start mb-2"><div className="pr-4"><div className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1 mb-1.5 ${log.type === 'รายรับ' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}><Icon name={log.type === 'รายรับ' ? "arrow-down-left" : "arrow-up-right"} weight="bold" size={10}/>{log.type}</div><h5 className="font-bold text-gray-800 text-sm leading-snug">{log.item}</h5></div><div className={`text-lg font-black tracking-tight flex-shrink-0 ${log.type === 'รายรับ' ? 'text-emerald-600' : 'text-red-600'}`}>{log.type === 'รายรับ' ? '+' : '-'}฿{Number(log.amount).toLocaleString()}</div></div>
-                    <div className="flex justify-between items-end border-t border-dashed border-gray-100 pt-3 mt-3"><div><p className="text-[10px] font-bold text-gray-400 flex items-center gap-1"><Icon name="calendar-blank" weight="bold"/> {new Date(log.date).toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'2-digit'})}</p><p className="text-[10px] font-bold text-gray-400 flex items-center gap-1 mt-1 truncate max-w-[150px]"><Icon name="user" weight="bold"/> {log.person || 'ไม่ระบุ'}</p></div><div className="flex gap-1.5">{log.receiptUrl && <button onClick={()=>onViewImage(log.receiptUrl)} className="w-8 h-8 rounded-lg bg-gray-50 text-gray-500 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center transition border border-gray-100 shadow-sm" title="ดูใบเสร็จ"><Icon name="receipt" weight="fill" size={16}/></button>}{log.slipUrl && <button onClick={()=>onViewImage(log.slipUrl)} className="w-8 h-8 rounded-lg bg-gray-50 text-gray-500 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center transition border border-gray-100 shadow-sm" title="ดูสลิป"><Icon name="image" weight="fill" size={16}/></button>}<button onClick={()=>handleEditClick(log)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition ml-1 shadow-sm"><Icon name="pencil-simple" weight="bold" size={16}/></button><button onClick={()=>{if(window.confirm('ยืนยันการลบรายการนี้ใช่หรือไม่?')) onDelete(log.id)}} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition shadow-sm"><Icon name="trash" weight="bold" size={16}/></button></div></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingLog ? "แก้ไขรายการการเงิน" : "เพิ่มรายการการเงินใหม่"} zIndex="z-[110]"><FinanceForm onSubmit={onSave} initialData={editingLog} loading={loading} students={data.students} defaultProject={defaultProj} /></Modal>
+           </div>
         </div>
       );
     };
@@ -1010,7 +670,6 @@
 
       const finishAction = () => { setProcessingAction(null); setShowSuccess(true); setTimeout(() => setShowSuccess(false), 1500); };
       
-      // ข้อมูลที่จะส่งลงไปยัง Views ต่างๆ
       const uiData = { students, bills, history, amount: { qrCodes }, announcement, systemStatus, finance: financeLogs };
       const uiOrderData = { systemStatus: orderSystemStatus, products, orders };
 
@@ -1235,13 +894,13 @@
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !uiData.students?.length ? <Spinner /> : (
                 <>
-                  {activeTab === 'dashboard' && <DashboardView data={uiData} setData={()=>{}} setActiveTab={setActiveTab} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleSystemStatus={confirmToggleSystem}/>}
+                  {activeTab === 'dashboard' && <DashboardView data={uiData} setActiveTab={setActiveTab} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} setIsQrModalOpen={setIsQrModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} onGoToOverdue={handleGoToNotifications} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleSystemStatus={confirmToggleSystem}/>}
                   {activeTab === 'pending' && <PendingView data={uiData} setSelectedBill={setSelectedBill} />}
                   {activeTab === 'bills' && <BillView data={uiData} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                   {activeTab === 'history' && <HistoryView data={uiData} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                   {activeTab === 'students' && <StudentView data={uiData} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
                   {activeTab === 'finance' && <FinanceView data={uiData} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
-                  {activeTab === 'notifications' && <NotificationView students={uiData.students} data={uiData} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
+                  {activeTab === 'notifications' && <NotificationView students={uiData.students} data={uiData} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} />}
                   {activeTab === 'orders' && <OrderView orderData={uiOrderData} students={uiData.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrders} />}
                 </>
               )}
