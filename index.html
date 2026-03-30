@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Admin System</title>
+  <title>Admin Medtech67 System</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -329,7 +329,8 @@
                     if(form.isReceiptDeleted) receiptUrl = ''; 
                     if(form.isSlipDeleted) slipUrl = '';
 
-                    const logId = form.id || `FIN-${Date.now()}`; 
+                    // ✅ บังคับแปลง ID เป็น String ป้องกัน Error n.indexOf
+                    const logId = String(form.id || `FIN-${Date.now()}`); 
                     const finData = { ...form, id: logId, receiptUrl: receiptUrl, slipUrl: slipUrl };
                     delete finData.receiptFile; delete finData.slipFile; delete finData.isReceiptDeleted; delete finData.isSlipDeleted;
                     
@@ -341,29 +342,46 @@
                     return await apiCall('getAllData'); 
                 }
 
-                // 📦 จัดการสินค้า
+                // 📦 จัดการสินค้า (แยกฟิลด์ image2, image3, sizeChart2...)
                 case 'saveProduct': {
                     const form = args[0]; 
-                    let finalImageStr = form.image;
-                    if(form.imageFiles && form.imageFiles.length > 0) {
-                        const newUrls = await Promise.all(form.imageFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `PROD-${Date.now()}-${i}.jpg`})));
-                        finalImageStr = (form.image ? form.image + ' | ' : '') + newUrls.join(' | ');
-                    }
-                    let finalSizeStr = form.sizeChart;
-                    if(form.sizeChartFiles && form.sizeChartFiles.length > 0) {
-                        const newUrls = await Promise.all(form.sizeChartFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `SIZE-${Date.now()}-${i}.jpg`})));
-                        finalSizeStr = (form.sizeChart ? form.sizeChart + ' | ' : '') + newUrls.join(' | ');
-                    }
-                    const prodId = form.id || `P-${Date.now()}`; 
-                    const prodData = { ...form, id: prodId, image: finalImageStr, sizeChart: finalSizeStr };
-                    delete prodData.imageFiles; delete prodData.sizeChartFiles;
                     
-                    await db.collection('products').doc(prodId).set(prodData);
+                    let allMainUrls = [...(form.existingMainImages || [])];
+                    if(form.newMainFiles && form.newMainFiles.length > 0) {
+                        const newUrls = await Promise.all(form.newMainFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `PROD-${Date.now()}-${i}.jpg`})));
+                        allMainUrls.push(...newUrls);
+                    }
+                    
+                    let allSizeUrls = [...(form.existingSizeImages || [])];
+                    if(form.newSizeFiles && form.newSizeFiles.length > 0) {
+                        const newUrls = await Promise.all(form.newSizeFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `SIZE-${Date.now()}-${i}.jpg`})));
+                        allSizeUrls.push(...newUrls);
+                    }
+
+                    const prodId = String(form.id || `P-${Date.now()}`); 
+                    const prodData = { 
+                        id: prodId,
+                        name: form.name,
+                        price: form.price,
+                        options: form.options,
+                        status: form.status,
+                        stock: form.stock,
+                    };
+                    
+                    // ✅ เซ็ตชื่อฟิลด์แยกกัน (image, image2, image3...)
+                    allMainUrls.forEach((url, i) => {
+                        if (i === 0) prodData.image = url;
+                        else prodData[`image${i+1}`] = url;
+                    });
+                    
+                    // ✅ เซ็ตชื่อฟิลด์แยกกัน (sizeChart, sizeChart2...)
+                    allSizeUrls.forEach((url, i) => {
+                        if (i === 0) prodData.sizeChart = url;
+                        else prodData[`sizeChart${i+1}`] = url;
+                    });
+                    
+                    await db.collection('products').doc(prodId).set(prodData); // บันทึกทับตัวเดิม
                     return await apiCall('getOrderData');
-                }
-                case 'deleteProduct': { 
-                    await db.collection('products').doc(String(args[0])).delete(); 
-                    return await apiCall('getOrderData'); 
                 }
                 
                 // 🛍️ ออเดอร์
@@ -2797,22 +2815,29 @@
         );
     };
 
-    // --- Helper: Image Gallery (ฉบับแก้ไข: แยกรูปฉลาดขึ้น + ปุ่มชัดเจน) ---
-    const ProductImageGallery = ({ imageString }) => {
+    // --- Helper: Image Gallery (รองรับ image, image2, image3...) ---
+    const ProductImageGallery = ({ product }) => {
         const images = useMemo(() => {
-            if (!imageString) return [];
-
-            return imageString
-                // แยกด้วย: คอมม่า(,) หรือ เว้นวรรค(\s) หรือ ขึ้นบรรทัดใหม่(\n) หรือ ขีดตั้ง(|)
-                .split(/[, \n|]+/) 
-                .map(url => url.trim()) // ตัดช่องว่างหน้าหลัง
-                // กรองเอาเฉพาะอันที่เป็นลิงก์จริงๆ (กันค่าว่างหลุดมา)
-                .filter(url => url && url.length > 5 && url.startsWith('http')); 
-        }, [imageString]);
+            if (!product) return [];
+            const imgs = [];
+            
+            // รองรับของเก่าที่มี " | "
+            if (product.image && product.image.includes(' | ')) {
+                imgs.push(...product.image.split(' | ').map(s=>s.trim()).filter(s => s.startsWith('http')));
+            } else {
+                // รองรับโครงสร้างใหม่ (image, image2, image3...)
+                if (product.image && product.image.startsWith('http')) imgs.push(product.image);
+                let i = 2;
+                while(product[`image${i}`]) { 
+                    if (product[`image${i}`].startsWith('http')) imgs.push(product[`image${i}`]); 
+                    i++; 
+                }
+            }
+            return imgs;
+        }, [product]);
 
         const [currentIndex, setCurrentIndex] = useState(0);
 
-        // รีเซ็ตหน้าแรกเสมอเมื่อรายการรูปเปลี่ยน
         useEffect(() => { setCurrentIndex(0); }, [images]);
 
         if (images.length === 0) {
@@ -2822,6 +2847,28 @@
                 </div>
             );
         }
+
+        return (
+            <div className="relative w-full h-full group bg-gray-100">
+                <img 
+                    src={images[currentIndex]} 
+                    className="w-full h-full object-cover" 
+                    alt={`รูปที่ ${currentIndex + 1}`}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+                    {currentIndex + 1} / {images.length}
+                </div>
+                {images.length > 1 && (
+                    <>
+                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev - 1 + images.length) % images.length)}} className="absolute left-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-left" weight="bold" className="text-white drop-shadow-md"/></button>
+                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % images.length)}} className="absolute right-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-right" weight="bold" className="text-white drop-shadow-md"/></button>
+                    </>
+                )}
+            </div>
+        );
+    };
 
         const nextImage = (e) => {
             e.stopPropagation();
@@ -2920,9 +2967,9 @@
         );
     };
 
-    // --- Product Modal (Logic: Safe Save & Modern Design) ---
+    // --- Product Modal ---
     const ProductModal = ({ isOpen, onClose, product, onSave, loading, zIndex = "z-[110]" }) => {
-        const [form, setForm] = useState({ id: '', name: '', price: '', image: '', options: '', status: 'ON', sizeChart: '', stock: '' });
+        const [form, setForm] = useState({ id: '', name: '', price: '', options: '', status: 'ON', stock: '' });
         
         const [existingMainImages, setExistingMainImages] = useState([]); 
         const [newMainFiles, setNewMainFiles] = useState([]); 
@@ -2930,28 +2977,39 @@
         const [newSizeFiles, setNewSizeFiles] = useState([]); 
         const [optionGroups, setOptionGroups] = useState([{ header: '', options: [{ label: '', price: '' }] }]);
 
-        // ✅ 1. โหลดข้อมูลเมื่อเปิด Modal (ทำให้ชัวร์ว่ารูปเก่ามาครบ)
         useEffect(() => {
             if(isOpen) {
                 if (product) {
                     setForm(product);
 
-                    const safeSplit = (str) => {
-                        if (!str) return [];
-                        return str.split(/[, \n|]+/) // แยกด้วยทุกตัวคั่นที่เป็นไปได้
-                                  .map(s => s.trim())
-                                  .filter(s => s && s.startsWith('http'));
-                    };
-
-                    setExistingMainImages(safeSplit(product.image));
-                    setExistingSizeImages(safeSplit(product.sizeChart));
+                    const mainImgs = [];
+                    const sizeImgs = [];
                     
+                    // ดึง image, image2, image3...
+                    if (product.image && product.image.includes(' | ')) {
+                        mainImgs.push(...product.image.split(' | ').map(s=>s.trim()).filter(Boolean));
+                    } else {
+                        if (product.image) mainImgs.push(product.image);
+                        let i = 2;
+                        while(product[`image${i}`]) { mainImgs.push(product[`image${i}`]); i++; }
+                    }
+
+                    // ดึง sizeChart, sizeChart2...
+                    if (product.sizeChart && product.sizeChart.includes(' | ')) {
+                        sizeImgs.push(...product.sizeChart.split(' | ').map(s=>s.trim()).filter(Boolean));
+                    } else {
+                        if (product.sizeChart) sizeImgs.push(product.sizeChart);
+                        let j = 2;
+                        while(product[`sizeChart${j}`]) { sizeImgs.push(product[`sizeChart${j}`]); j++; }
+                    }
+
+                    setExistingMainImages(mainImgs);
+                    setExistingSizeImages(sizeImgs);
                     setNewMainFiles([]);
                     setNewSizeFiles([]);
                     parseOptionString(product.options || '');
                 } else {
-                    // กรณีเพิ่มใหม่
-                    setForm({ id: `P-${Date.now()}`, name: '', price: '', image: '', options: '', status: 'ON', sizeChart: '', stock: '' });
+                    setForm({ id: '', name: '', price: '', options: '', status: 'ON', stock: '' });
                     setExistingMainImages([]); setNewMainFiles([]);
                     setExistingSizeImages([]); setNewSizeFiles([]);
                     setOptionGroups([{ header: '', options: [{ label: '', price: '' }] }]);
@@ -3005,13 +3063,10 @@
             onSave({
                 ...form,
                 options: buildOptionString(),
-                
-                // ✅ แก้ไข: ส่งกลับไปเป็น String คั่นด้วย " | "
-                image: existingMainImages.join(' | '), 
-                imageFiles: newMainFiles,            
-                
-                sizeChart: existingSizeImages.join(' | '), 
-                sizeChartFiles: newSizeFiles 
+                existingMainImages: existingMainImages,
+                newMainFiles: newMainFiles,
+                existingSizeImages: existingSizeImages,
+                newSizeFiles: newSizeFiles
             });
         };
 
@@ -3591,7 +3646,7 @@
                         {filteredProducts.map((p) => (
                             <div key={p.id} className="group bg-white p-3 rounded-2xl card-shadow border border-gray-100 hover:border-blue-200 transition relative overflow-hidden">
                                 <div className="aspect-square bg-gray-50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
-                                    <ProductImageGallery imageString={p.image} />
+                                    <ProductImageGallery product={p} />
                                     <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-20 ${getProductStatusStyle(p.status)}`}>{p.status}</span>
                                 </div>
                                 <h4 className="font-bold text-sm text-gray-800 line-clamp-1 mb-1">{p.name}</h4>
@@ -4871,7 +4926,7 @@ return (
               <div className="bg-primary p-2.5 rounded-xl text-white shadow-lg shadow-blue-200">
                 <Icon name="graduation-cap" weight="fill" size={24}/>
               </div>
-              <h1 className="text-2xl font-black text-gray-800 tracking-tight">Admin <span className="text-primary">CHOKUN</span></h1>
+              <h1 className="text-2xl font-black text-gray-800 tracking-tight">Admin <span className="text-primary">MedTech67</span></h1>
             </div>
             
             <nav className="flex flex-col gap-2 overflow-y-auto no-scrollbar">
