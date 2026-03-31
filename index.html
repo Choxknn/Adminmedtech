@@ -472,11 +472,6 @@
                     return await callGAS('sendBatchLineMessage', args[0].targets);
                 }
 
-                default:
-                    throw new Error('Action not mapped to Firebase: ' + action);
-            }
-
-
                 // 💳 จัดการ QR Code
                 case 'uploadQrImage': {
                     const [b64, mime, fName, amt, oldUrl] = args; 
