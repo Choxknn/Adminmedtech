@@ -468,6 +468,18 @@
                     }
                     return await callGAS('sendBatchLineNotify', { targets: targets });
                 }
+                case 'sendBatchLineNotify': {
+                    return await callGAS('sendBatchLineMessage', args[0].targets);
+                }
+
+                default:
+                    throw new Error('Action not mapped to Firebase: ' + action);
+            }
+        } catch (error) {
+            console.error("API Call Error:", error);
+            throw error;
+        }
+    };
 
                 // 💳 จัดการ QR Code
                 case 'uploadQrImage': {
@@ -503,6 +515,8 @@
                     await db.collection('config').doc('qrMap').set({ codes: codes }); 
                     return (await apiCall('getAllData')).amount;
                 }
+
+                
 
                 case 'verifyAdminPin': {
                     const snap = await db.collection('config').doc('system').get();
