@@ -475,11 +475,7 @@
                 default:
                     throw new Error('Action not mapped to Firebase: ' + action);
             }
-        } catch (error) {
-            console.error("API Call Error:", error);
-            throw error;
-        }
-    };
+
 
                 // 💳 จัดการ QR Code
                 case 'uploadQrImage': {
