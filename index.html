@@ -1696,11 +1696,12 @@
         );
     };
 
-    // --- Notification View (Updated: Show Student ID & Name in Modal & Include Followup tab) ---
+    // --- Notification View (อัปเดต: ใช้ตัวเลือกนักศึกษาแบบ Multi-Select ในหน้าส่งข้อความ) ---
     const NotificationView = ({ students, data, onSendCustom, onSendOverdue, onSendAccount, onSendOverdueBatch, loading, defaultSubTab = 'followup' }) => {
         const [activeSubTab, setActiveSubTab] = useState(defaultSubTab); 
         
-        const [form, setForm] = useState({ targetType: 'all', specificUserId: '', title: '', detail: '', msgType: 'notification' });
+        // ✅ เปลี่ยน State: ใช้ studentIds (Array) เพื่อรองรับการเลือกหลายคน
+        const [form, setForm] = useState({ studentIds: [], title: '', detail: '', msgType: 'notification' });
         const [accountStudentIds, setAccountStudentIds] = useState([]);
         const [confirmState, setConfirmState] = useState({ isOpen: false, type: '', data: null, title: '', message: '' });
         
@@ -1729,7 +1730,7 @@
             return calculatedFine;
         };
 
-        // ✅ จัดกลุ่มบิล (เกินกำหนด vs ใกล้ถึงกำหนด)
+        // จัดกลุ่มบิล (เกินกำหนด vs ใกล้ถึงกำหนด)
         const dueBills = useMemo(() => {
             const today = new Date(); today.setHours(0,0,0,0);
             const threeDays = new Date(today); threeDays.setDate(today.getDate() + 3);
@@ -1750,18 +1751,15 @@
             return { overdue, dueSoon };
         }, [data.bills, students]);
 
-        const totalOverdueAmount = useMemo(() => dueBills.overdue.reduce((sum, b) => sum + (Number(b.amount) - Number(b.discount || 0)), 0), [dueBills.overdue]);
-
         const triggerSendCustom = (e) => { 
             e.preventDefault();
-            if (form.targetType === 'specific' && !form.specificUserId) return alert('กรุณาเลือกรหัสนักศึกษา');
+            if (form.studentIds.length === 0) return alert('กรุณาเลือกนักศึกษาอย่างน้อย 1 คน');
             if (!form.title) return alert('กรุณาระบุหัวข้อข้อความ');
             
             const typeText = form.msgType === 'announcement' ? 'ประกาศ' : 'ข้อความ'; 
-            const targetCount = form.targetType === 'all' ? students.length : 1;
-            
-            setConfirmState({ isOpen: true, type: 'CUSTOM', data: null, title: `ยืนยันการส่ง${typeText}`, message: `คุณต้องการส่ง "${form.title}" ให้กับนักศึกษาจำนวน ${targetCount} คน ใช่หรือไม่?` }); 
+            setConfirmState({ isOpen: true, type: 'CUSTOM', data: null, title: `ยืนยันการส่ง${typeText}`, message: `คุณต้องการส่ง "${form.title}" ให้กับนักศึกษาจำนวน ${form.studentIds.length} คน ใช่หรือไม่?` }); 
         };
+
         const triggerSendAccount = () => { if (accountStudentIds.length === 0) return; setConfirmState({ isOpen: true, type: 'ACCOUNT', data: null, title: 'ยืนยันการส่งข้อมูลบัญชี', message: `คุณต้องการส่ง รหัสนักศึกษาและรหัสผ่าน ให้กับนักศึกษาจำนวน ${accountStudentIds.length} คน ใช่หรือไม่?` }); };
         const triggerSendOverdue = (billId, studentName, amount) => { setConfirmState({ isOpen: true, type: 'OVERDUE', data: billId, title: 'ยืนยันการทวงถาม', message: `คุณต้องการส่งข้อความทวงถามยอด ${Number(amount).toLocaleString()} บาท ไปยัง ${studentName} ใช่หรือไม่?` }); };
         const triggerSendOverdueAll = () => { if (dueBills.overdue.length === 0) return; setConfirmState({ isOpen: true, type: 'OVERDUE_ALL', data: dueBills.overdue.filter(b => b.hasLine).map(b => ({ lineUserId: students.find(s => String(s.id) === String(b.studentId)).userId, type: 'OVERDUE', payload: { bill: b, studentName: b.studentName } })), title: 'ยืนยันการทวงถามทั้งหมด', message: `คุณต้องการส่งข้อความแจ้งเตือน "เกินกำหนด" ทั้งหมด ${dueBills.overdue.length} รายการ ใช่หรือไม่?` }); };
@@ -1769,22 +1767,13 @@
 
         const handleConfirmAction = () => {
             if (confirmState.type === 'CUSTOM') { 
-                const customFormToSubmit = {
-                     targetType: form.targetType,
-                     specificUserId: form.specificUserId,
-                     title: form.title,
-                     detail: form.detail,
-                     msgType: form.msgType,
-                     // เพิ่ม studentIds ให้เหมือนเดิมเพื่อให้ App.js เข้าใจถ้ายังใช้โครงสร้างเดิม
-                     studentIds: form.targetType === 'all' ? students.map(s => s.id) : [form.specificUserId]
-                };
-                onSendCustom(customFormToSubmit); 
-                if (!loading) setForm({ targetType: 'all', specificUserId: '', title: '', detail: '', msgType: 'notification' }); 
+                onSendCustom(form); 
+                if (!loading) setForm({ studentIds: [], title: '', detail: '', msgType: 'notification' }); 
             } 
             else if (confirmState.type === 'ACCOUNT') { onSendAccount(accountStudentIds); if (!loading) setAccountStudentIds([]); } 
             else if (confirmState.type === 'OVERDUE') { onSendOverdue(confirmState.data); } 
             else if (confirmState.type === 'OVERDUE_ALL') { onSendOverdueBatch(confirmState.data); }
-            else if (confirmState.type === 'DUE_SOON_ALL') { onSendOverdueBatch(confirmState.data); } // ใช้ฟังก์ชัน Batch ส่ง
+            else if (confirmState.type === 'DUE_SOON_ALL') { onSendOverdueBatch(confirmState.data); }
         };
 
         useEffect(() => {
@@ -1914,19 +1903,15 @@
                                     <button type="button" onClick={() => setForm({...form, msgType: 'announcement'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${form.msgType === 'announcement' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>📢 ประกาศสำคัญ</button>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-2">กลุ่มเป้าหมาย</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button type="button" onClick={() => setForm({...form, targetType: 'all', specificUserId: ''})} className={`py-3 px-4 rounded-xl text-xs font-bold border-2 transition-all flex flex-col items-center justify-center gap-1 ${form.targetType === 'all' ? 'border-primary bg-blue-50 text-blue-700' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}><Icon name="users" size={24} weight={form.targetType === 'all' ? 'fill' : 'regular'}/>ส่งหานักศึกษาทุกคน</button>
-                                        <button type="button" onClick={() => setForm({...form, targetType: 'specific'})} className={`py-3 px-4 rounded-xl text-xs font-bold border-2 transition-all flex flex-col items-center justify-center gap-1 ${form.targetType === 'specific' ? 'border-primary bg-blue-50 text-blue-700' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}><Icon name="user" size={24} weight={form.targetType === 'specific' ? 'fill' : 'regular'}/>ระบุรายบุคคล</button>
-                                    </div>
+                                {/* ✅ เปลี่ยน UI เลือกนักศึกษามาใช้ StudentMultiSelect */}
+                                <div className="animate-fade-in">
+                                    <label className="block text-xs font-bold text-gray-500 mb-1.5">ผู้รับข้อความ <span className="text-red-500">*</span></label>
+                                    <StudentMultiSelect students={students} selectedIds={form.studentIds} onChange={(ids) => setForm({...form, studentIds: ids})} />
                                 </div>
-                                {form.targetType === 'specific' && (
-                                    <div className="animate-fade-in"><label className="block text-xs font-bold text-gray-500 mb-1">เลือกนักศึกษา <span className="text-red-500">*</span></label><div className="relative"><Icon name="magnifying-glass" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/><select value={form.specificUserId} onChange={e => setForm({...form, specificUserId: e.target.value})} className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 appearance-none cursor-pointer"><option value="">-- เลือกรหัสนักศึกษา --</option>{students.map(s => (<option key={s.id} value={s.id}>{s.id} - {s.name} {s.userId ? '(✅ มี LINE)' : '(❌ ไม่มี LINE)'}</option>))}</select><Icon name="caret-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/></div></div>
-                                )}
+                                
                                 <div><label className="block text-xs font-bold text-gray-500 mb-1">หัวข้อข้อความ <span className="text-red-500">*</span></label><input type="text" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required placeholder="เช่น ประกาศวันชำระเงิน" className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-primary transition"/></div>
                                 <div><label className="block text-xs font-bold text-gray-500 mb-1">รายละเอียดข้อความ</label><textarea value={form.detail} onChange={e => setForm({...form, detail: e.target.value})} rows="4" placeholder="พิมพ์รายละเอียดที่นี่..." className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-primary transition"></textarea></div>
-                                <button type="submit" disabled={loading || !form.title || (form.targetType === 'specific' && !form.specificUserId)} className={`w-full py-4 text-white rounded-2xl font-bold hover:shadow-lg disabled:opacity-50 transition transform active:scale-[0.98] flex items-center justify-center gap-2 ${form.msgType === 'announcement' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 shadow-purple-200' : 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-green-200'}`}>
+                                <button type="submit" disabled={loading || !form.title || form.studentIds.length === 0} className={`w-full py-4 text-white rounded-2xl font-bold hover:shadow-lg disabled:opacity-50 transition transform active:scale-[0.98] flex items-center justify-center gap-2 ${form.msgType === 'announcement' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 shadow-purple-200' : 'bg-gradient-to-r from-green-500 to-emerald-600 shadow-green-200'}`}>
                                     {loading ? <><Icon name="circle-notch" className="animate-spin" weight="bold" size={20}/> กำลังส่ง...</> : <><Icon name="paper-plane-right" weight="fill" size={20}/> {form.msgType === 'announcement' ? "ส่งประกาศ" : "ส่งข้อความ"}</>}
                                 </button>
                             </form>
@@ -1934,7 +1919,7 @@
                     )}
                 </div>
 
-                {/* Modal สำหรับดูรายละเอียดบิล (โชว์รหัสบิล & นักศึกษา แบบอัปเดต) */}
+                {/* Modal สำหรับดูรายละเอียดบิล (โชว์รหัสบิล & นักศึกษา) */}
                 <Modal isOpen={!!viewingBill} onClose={() => setViewingBill(null)} title="รายละเอียดบิล" zIndex="z-[80]">
                     {viewingBill && (() => {
                         const fine = getFine(viewingBill);
@@ -1943,7 +1928,6 @@
 
                         return (
                             <div className="space-y-4 pt-1 animate-fade-in">
-                                {/* Header Card */}
                                 <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl text-center border border-gray-100 shadow-sm relative overflow-hidden">
                                     <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl text-[10px] font-bold shadow-sm ${getStatusColor(viewingBill.status)}`}>
                                         {viewingBill.status || 'ค้างชำระ'}
@@ -1953,7 +1937,6 @@
                                     <p className="text-sm text-primary font-medium mt-2">{viewingBill.item}</p>
                                 </div>
                                 
-                                {/* Details List */}
                                 <div className="space-y-0 mt-4 border border-gray-100 rounded-2xl overflow-hidden">
                                     <div className="flex justify-between py-3 px-4 bg-white border-b border-gray-50 items-center">
                                         <span className="text-xs text-gray-400 font-bold flex items-center gap-2"><Icon name="user" weight="bold"/> นักศึกษา</span>
@@ -1977,7 +1960,6 @@
                         );
                     })()}
                 </Modal>
-
             </div>
         );
     };
@@ -4596,7 +4578,7 @@
       const [data, setData] = useState({ students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, qrUrl: '', qrCodes: [] }, announcement: '' });
       const [orderData, setOrderData] = useState({ systemStatus: 'OFF', products: [], orders: [] });
       
-      const [notificationSubTab, setNotificationSubTab] = useState('general');
+      const [notificationSubTab, setNotificationSubTab] = useState('followup');
       const [billFilter, setBillFilter] = useState('all'); 
       const [billSearch, setBillSearch] = useState('');
       const [selectedBill, setSelectedBill] = useState(null);
@@ -4798,7 +4780,7 @@
                 return (
                   <button 
                     key={tab.id} 
-                    onClick={() => { setActiveTab(tab.id); if(tab.id === 'notifications') setNotificationSubTab('general'); if(tab.id === 'bills') setBillFilter('all'); }} 
+                    onClick={() => { setActiveTab(tab.id); if(tab.id === 'notifications') setNotificationSubTab('followup'); if(tab.id === 'bills') setBillFilter('all'); }} 
                     className={`flex items-center gap-4 px-4 py-3.5 rounded-xl font-bold transition-all duration-200 w-full text-left relative ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}
                   >
                     <Icon name={tab.icon} size={22} weight={isActive ? 'fill' : 'bold'} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
@@ -4844,7 +4826,7 @@
               return (
                 <button 
                   key={tab.id} 
-                  onClick={() => { setActiveTab(tab.id); if(tab.id==='notifications') setNotificationSubTab('general'); if(tab.id==='bills') setBillFilter('all'); }} 
+                  onClick={() => { setActiveTab(tab.id); if(tab.id==='notifications') setNotificationSubTab('followup'); if(tab.id==='bills') setBillFilter('all'); }} 
                   className={`relative group flex flex-col items-center justify-center transition-all duration-300 ${isActive ? '-translate-y-3' : 'hover:-translate-y-1'}`}
                 >
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm ${isActive ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-300 scale-110' : 'bg-transparent text-gray-400 hover:bg-blue-50 hover:text-blue-500'}`}>
