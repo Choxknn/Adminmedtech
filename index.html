@@ -142,17 +142,6 @@
                         }
                     });
                   
-                // ✅ สั่งลบ User ในระบบ Firebase Auth
-                case 'deleteStudentAuth': {
-                    const studentId = args[0];
-                    // ค้นหาข้อมูลนักศึกษาจาก State เพื่อเอาค่า userId (LINE) ไปลบด้วย
-                    const studentData = data.students.find(s => s.id === studentId) || {};
-                    
-                    return await callGAS('deleteUserAuth', { 
-                        studentId: studentId, 
-                        userId: studentData.userId || '' 
-                    });
-                }
 
                     const histSnap = await db.collectionGroup('history').get();
                     histSnap.forEach(doc => { 
@@ -536,6 +525,17 @@
                     await user.reauthenticateWithCredential(cred);
                     await user.updatePassword(newPassword);
                     return "Password Updated";
+                }
+                // ✅ สั่งลบ User ในระบบ Firebase Auth
+                case 'deleteStudentAuth': {
+                    const studentId = args[0];
+                    // ค้นหาข้อมูลนักศึกษาจาก State เพื่อเอาค่า userId (LINE) ไปลบด้วย
+                    const studentData = data.students.find(s => s.id === studentId) || {};
+                    
+                    return await callGAS('deleteUserAuth', { 
+                        studentId: studentId, 
+                        userId: studentData.userId || '' 
+                    });
                 }
 
                 default: throw new Error("Action not mapped to Firebase: " + action);
