@@ -526,15 +526,30 @@
                     await user.updatePassword(newPassword);
                     return "Password Updated";
                 }
-                // ✅ สั่งลบ User ในระบบ Firebase Auth
+                // ✅ สั่งลบ User ออกจาก Auth และลบสถานะใน Firestore
                 case 'deleteStudentAuth': {
                     const studentId = args[0];
-                    const lineUserId = args[1] || ''; // รับค่า userId มาจากปุ่มกดโดยตรง
+                    const lineUserId = args[1] || '';
                     
-                    return await callGAS('deleteUserAuth', { 
-                        studentId: studentId, 
-                        userId: lineUserId 
+                    // 1. สั่ง GAS ลบ Auth
+                    await callGAS('deleteUserAuth', { studentId, userId: lineUserId });
+                    
+                    // 2. ลบสถานะรหัสผ่านใน Firestore (ลบจริงๆ)
+                    const userRef = db.collection('users').doc(studentId);
+                    await userRef.update({ 
+                        hasPassword: false, 
+                        password: firebase.firestore.FieldValue.delete() 
                     });
+                    return true;
+                }
+
+                // ✅ สั่งเปลี่ยนรหัสผ่านใหม่
+                case 'updateStudentPassword': {
+                    const studentId = args[0];
+                    const newPassword = args[1];
+                    // สั่ง GAS อัปเดตรหัส
+                    await callGAS('updateUserPassword', { studentId, newPassword });
+                    return true;
                 }
 
                 default: throw new Error("Action not mapped to Firebase: " + action);
@@ -1368,6 +1383,11 @@
 
     // --- Student Form (อัปเดตระบบจัดการสิทธิ์ Permissions) ---
     const StudentForm = ({ onSubmit, loading, initialData = null }) => {
+      const [isResetting, setIsResetting] = useState(false);
+        const [newPassInput, setNewPassInput] = useState('');
+        
+        // ✅ State สำหรับป๊อปอัปสวยๆ
+        const [popup, setPopup] = useState(null); // { type, title, text, onConfirm }
       // รายการสิทธิ์ทั้งหมดที่มีในระบบ
       const AVAILABLE_PERMISSIONS = [
         { id: 'home', label: 'หน้าแรก (Home)' },
@@ -1463,38 +1483,119 @@
             )}
           </div>
 
-          {/* ✅ ส่วนจัดการรหัสผ่านและบัญชี (เพิ่มใหม่) */}
-          {initialData && (
-              <div className="bg-red-50 p-4 rounded-2xl border border-red-100 space-y-3">
-                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1">
+          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ฉลาด) */}
+          <div className="relative border-t border-gray-100 pt-4 mt-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">บัญชีเข้าระบบ (Firebase Auth)</label>
+            
+            {form.hasPassword ? (
+                // กรณีมีรหัสผ่านแล้ว (สร้าง Auth แล้ว)
+                <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                    <div className="flex items-center gap-2 text-green-700 font-bold text-sm mb-3">
+                        <Icon name="check-circle" weight="fill" size={20}/>
+                        บัญชีถูกสร้างและเปิดใช้งานแล้ว
+                    </div>
+                    
+                    <div className="space-y-2 mt-3 p-3 bg-white rounded-lg border border-gray-200">
+                        <label className="text-xs font-bold text-gray-500">เปลี่ยนรหัสผ่านใหม่ให้นักศึกษา</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="พิมพ์รหัสผ่านใหม่..." 
+                                value={newPassInput} 
+                                onChange={(e) => setNewPassInput(e.target.value)}
+                                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                            />
+                            <button 
+                                type="button"
+                                disabled={!newPassInput || isResetting}
+                                onClick={() => {
+                                    setPopup({
+                                        type: 'warning',
+                                        title: 'ยืนยันการเปลี่ยนรหัส',
+                                        text: `คุณต้องการเปลี่ยนรหัสผ่านเป็น "${newPassInput}" ใช่หรือไม่?`,
+                                        onConfirm: () => {
+                                            setIsResetting(true);
+                                            apiCall('updateStudentPassword', form.id, newPassInput)
+                                                .then(() => {
+                                                    setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านในระบบ Auth เรียบร้อยแล้ว' });
+                                                    setNewPassInput('');
+                                                })
+                                                .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }))
+                                                .finally(() => setIsResetting(false));
+                                        }
+                                    });
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                            >
+                                {isResetting ? 'กำลังเปลี่ยน...' : 'บันทึกรหัสใหม่'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                // กรณีที่ยังไม่มีรหัส (สร้างใหม่)
+                <input type="text" name="password" value={form.password} onChange={handleChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition" placeholder="ตั้งรหัสผ่านเริ่มต้น (ถ้าเว้นว่าง = ยังไม่เปิดใช้)"/>
+            )}
+          </div>
+          
+          {/* ✅ ส่วนจัดการลบบัญชีอันตราย */}
+          {initialData && form.hasPassword && (
+              <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-4">
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1 mb-2">
                       <Icon name="shield-warning" weight="fill"/> อันตราย: จัดการบัญชีระบบ
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        type="button"
-                        onClick={() => { if(confirm('ยืนยันลบ "รหัสผ่าน" ในฐานข้อมูล? (นักศึกษาจะล็อกอินไม่ได้จนกว่าจะตั้งรหัสใหม่)')) { setForm({...form, password: ''}); }}} 
-                        className="py-2 bg-white text-red-500 rounded-xl text-[10px] font-bold border border-red-100 shadow-sm"
-                      >
-                        ลบรหัสในระบบ
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => { if(confirm('⚠️ คำเตือน: คุณต้องการลบบัญชีออกจากระบบ Authentication หรือไม่? นักศึกษาจะต้องสมัครใหม่เท่านั้น ยืนยัน?')) { 
-                            apiCall('deleteStudentAuth', form.id, form.userId) // ต้องเพิ่ม case นี้ใน apiCall ด้วย
-                                .then(() => alert('ลบ Account สำเร็จ'))
-                                .catch(err => alert('Error: ' + err.message));
-                        }}} 
-                        className="py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold shadow-md shadow-red-100"
-                      >
-                        ลบ Account (Auth)
-                      </button>
-                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                        setPopup({
+                            type: 'danger',
+                            title: 'ลบบัญชีออกจากระบบ?',
+                            text: 'การทำเช่นนี้จะลบการเชื่อมต่อ Auth ทุกช่องทาง (ทั้งรหัสผ่าน และ LINE) นักศึกษาจะต้องลงทะเบียนใหม่ ยืนยันหรือไม่?',
+                            onConfirm: () => {
+                                apiCall('deleteStudentAuth', form.id, form.userId) 
+                                    .then(() => {
+                                        setForm({...form, hasPassword: false, password: ''}); // อัปเดตหน้าจอทันที
+                                        setPopup({ type: 'success', title: 'สำเร็จ', text: 'ลบ Account ออกจากระบบเรียบร้อยแล้ว' });
+                                    })
+                                    .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
+                            }
+                        });
+                    }} 
+                    className="w-full py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 hover:bg-red-700 transition"
+                  >
+                    ลบ Account (Auth) ออกจากระบบ
+                  </button>
               </div>
           )}
 
           <button onClick={handleSubmit} disabled={loading || !form.id || !form.name} className="w-full py-3 mt-2 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition flex justify-center shadow-lg shadow-blue-200">
             {loading ? <><Icon name="spinner" className="animate-spin mr-2" weight="bold"/> กำลังบันทึก...</> : (initialData ? "บันทึกการแก้ไข" : "เพิ่มนักศึกษา")}
           </button>
+
+          {/* 🌟 ป๊อปอัปแจ้งเตือนสวยๆ (Custom Modal) 🌟 */}
+          {popup && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in rounded-3xl">
+                  <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[300px] text-center transform animate-scale-in">
+                      {popup.type === 'success' && <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="check" size={32} weight="bold"/></div>}
+                      {popup.type === 'error' && <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="x" size={32} weight="bold"/></div>}
+                      {popup.type === 'warning' && <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="warning" size={32} weight="bold"/></div>}
+                      {popup.type === 'danger' && <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="trash" size={32} weight="bold"/></div>}
+                      
+                      <h3 className="text-lg font-black text-gray-800 mb-2">{popup.title}</h3>
+                      <p className="text-xs text-gray-500 mb-6">{popup.text}</p>
+                      
+                      {popup.onConfirm ? (
+                          <div className="flex gap-2">
+                              <button type="button" onClick={() => setPopup(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">ยกเลิก</button>
+                              <button type="button" onClick={() => { popup.onConfirm(); setPopup(null); }} className={`flex-1 py-2.5 text-white font-bold rounded-xl shadow-md ${popup.type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>ยืนยัน</button>
+                          </div>
+                      ) : (
+                          <button type="button" onClick={() => setPopup(null)} className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700">ตกลง</button>
+                      )}
+                  </div>
+              </div>
+          )}
+          
         </div>
       );
     };
