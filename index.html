@@ -2231,7 +2231,7 @@
         );
     };
 
-   const DashboardView = ({ data, orderData, setActiveTab, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills, onEditHistory, onSelectBill }) => {
+   const DashboardView = ({ data, orderData, setActiveTab, setBillFilter, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills, onEditHistory, onSelectBill }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
             const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); 
@@ -4895,7 +4895,7 @@
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
-                  {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
+                  {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} setBillFilter={setBillFilter} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
                   {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                   {activeTab === 'history' && <HistoryView data={data} setSelectedBill={setEditingHistory} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                   {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
