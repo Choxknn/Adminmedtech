@@ -2870,21 +2870,28 @@
         );
     };
 
-    // --- StudentView (Final Fixed: Clear Status Colors) ---
     const StudentView = ({ data, setIsStudentModalOpen, setSelectedStudent, handleDeleteStudent, onViewBills }) => {
         const [searchTerm, setSearchTerm] = useState('');
         
         const filteredStudents = useMemo(() => {
+            // ✅ เพิ่มการเช็ค: ถ้า data หรือ data.students ยังไม่มี ให้ return array เปล่าไปก่อน
+            if (!data || !data.students) return []; 
+            
             if (!searchTerm) return data.students;
             const lower = searchTerm.toLowerCase();
             return data.students.filter(s => String(s.id).toLowerCase().includes(lower) || String(s.name).toLowerCase().includes(lower));
-        }, [data.students, searchTerm]);
+        }, [data?.students, searchTerm]); // ✅ ใส่ ? ตรง data?.students เผื่อ data เป็น undefined
 
         const stats = useMemo(() => {
+            // ✅ เพิ่มการเช็ค: ถ้า data หรือ data.students ยังไม่มี ให้คืนค่า 0 ไปก่อน
+            if (!data || !data.students) return { total: 0, linked: 0, overdueUsers: 0 };
+
             const total = data.students.length;
-            // เช็ค firebaseUid แทน userId
             const linked = data.students.filter(s => s.firebaseUid && String(s.firebaseUid).trim() !== '').length;
+            
+            // ✅ เพิ่มการเช็ค data.bills ด้วย เผื่อยังไม่มีข้อมูลบิล
             const overdueUsers = data.students.filter(s => {
+                if (!data.bills) return false; // ถ้าไม่มีบิล ก็ไม่มีใครค้าง
                 return data.bills.some(b => {
                     if (b.studentId !== s.id) return false;
                     if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false;
@@ -2894,9 +2901,9 @@
                     return due < today;
                 });
             }).length;
+            
             return { total, linked, overdueUsers };
-        }, [data.students, data.bills]);
-
+        }, [data?.students, data?.bills]);
         // Helper: สุ่มสี Avatar (ตัดสีเขียวออก เพื่อไม่ให้สับสน)
         const getAvatarColor = (id) => {
             const colors = [
