@@ -2938,9 +2938,7 @@
         const [searchTerm, setSearchTerm] = useState('');
         
         const filteredStudents = useMemo(() => {
-            // ✅ เพิ่มการเช็ค: ถ้า data หรือ data.students ยังไม่มี ให้ return array เปล่าไปก่อน
             if (!data || !data.students) return []; 
-            
             if (!searchTerm) return data.students;
             const lower = searchTerm.toLowerCase();
             return data.students.filter(s => String(s.id).toLowerCase().includes(lower) || String(s.name).toLowerCase().includes(lower));
@@ -2950,18 +2948,12 @@
             if (!data || !data.students) return { total: 0, lineLinked: 0, emailLinked: 0, issues: 0 };
 
             const total = data.students.length;
-            
-            // จำนวนคนที่เชื่อม LINE (มี lineUid)
             const lineLinked = data.students.filter(s => s.lineUid && String(s.lineUid).trim() !== '').length;
-            
-            // จำนวนคนที่เชื่อมอีเมล (มี firebaseUid)
             const emailLinked = data.students.filter(s => s.firebaseUid && String(s.firebaseUid).trim() !== '').length;
             
-            // จำนวนรายการที่มีปัญหา (ขาดรหัส, ขาด userId, ค้างชำระ)
             const issues = data.students.filter(s => {
                 const hasPasswordSet = s.hasPassword === true || (s.password && String(s.password).trim() !== '');
                 const hasUserId = s.userId && String(s.userId).trim() !== '';
-                
                 const hasOverdueBill = data.bills?.some(b => {
                     if (b.studentId !== s.id) return false;
                     if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false;
@@ -2970,75 +2962,50 @@
                     const today = new Date(); today.setHours(0,0,0,0);
                     return due < today;
                 });
-
                 return !hasPasswordSet || !hasUserId || hasOverdueBill;
             }).length;
             
             return { total, lineLinked, emailLinked, issues };
         }, [data?.students, data?.bills]);
 
-        // Helper: สุ่มสี Avatar (ตัดสีเขียวออก เพื่อไม่ให้สับสน)
         const getAvatarColor = (id) => {
-            const colors = [
-                'bg-blue-100 text-blue-600', 
-                'bg-indigo-100 text-indigo-600', 
-                'bg-purple-100 text-purple-600', 
-                'bg-pink-100 text-pink-600', 
-                'bg-orange-100 text-orange-600', // ใช้ส้มแทน
-                'bg-slate-100 text-slate-600'    // ใช้เทาแทน
-            ];
+            const colors = ['bg-blue-100 text-blue-600', 'bg-indigo-100 text-indigo-600', 'bg-purple-100 text-purple-600', 'bg-pink-100 text-pink-600', 'bg-orange-100 text-orange-600', 'bg-slate-100 text-slate-600'];
             const index = String(id).charCodeAt(0) % colors.length;
             return colors[index];
         };
 
         return (
-          <div className="space-y-5 pb-24 relative">
+          <div className="space-y-5 pb-24 relative animate-fade-in">
              <ScrollToTopBottom />
 
-             {/* ✅ Header & Stats (ปรับปรุงใหม่ 4 ช่อง) */}
-                <div className="px-2">
-                    <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-xl font-bold text-gray-800">รายชื่อผู้ใช้</h2>
-                        <button onClick={() => { setSelectedStudent(null); setIsStudentModalOpen(true); }} className="w-10 h-10 bg-primary text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 flex items-center justify-center transition active:scale-95">
-                            <Icon name="plus" weight="bold" size={20}/>
-                        </button>
-                    </div>
-                    
-                    {/* เปลี่ยนเป็น grid-cols-2 หรือ grid-cols-4 ขึ้นอยู่กับขนาดจอ */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {/* 1. ผู้ใช้ทั้งหมด */}
-                        <div className="bg-white p-3 rounded-xl card-shadow border border-gray-100 text-center flex flex-col items-center justify-center">
-                            <div className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1 mb-1">
-                                <Icon name="users" weight="fill"/> ผู้ใช้ทั้งหมด
-                            </div>
-                            <div className="text-xl font-extrabold text-gray-800">{stats.total}</div>
-                        </div>
-
-                        {/* 2. เชื่อม LINE */}
-                        <div className="bg-[#00B900]/10 p-3 rounded-xl border border-[#00B900]/20 text-center flex flex-col items-center justify-center">
-                            <div className="text-[10px] font-bold text-[#00B900] uppercase flex items-center gap-1 mb-1">
-                                <Icon name="chat-circle-dots" weight="fill"/> เชื่อม LINE
-                            </div>
-                            <div className="text-xl font-extrabold text-[#00B900]">{stats.lineLinked}</div>
-                        </div>
-
-                        {/* 3. เชื่อมอีเมล */}
-                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center flex flex-col items-center justify-center">
-                            <div className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1 mb-1">
-                                <Icon name="envelope-simple" weight="fill"/> เชื่อมอีเมล
-                            </div>
-                            <div className="text-xl font-extrabold text-blue-700">{stats.emailLinked}</div>
-                        </div>
-
-                        {/* 4. รายการที่มีปัญหา (ขาด/ค้าง) */}
-                        <div className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center ${stats.issues > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
-                            <div className={`text-[10px] font-bold uppercase flex items-center gap-1 mb-1 ${stats.issues > 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                                <Icon name="warning-circle" weight="fill"/> ขาด/ค้าง
-                            </div>
-                            <div className={`text-xl font-extrabold ${stats.issues > 0 ? 'text-red-600' : 'text-gray-500'}`}>{stats.issues}</div>
-                        </div>
-                    </div>
-                </div>
+             {/* Header & Stats */}
+             <div className="px-2">
+                 <div className="flex justify-between items-center mb-3">
+                     <h2 className="text-xl font-bold text-gray-800">รายชื่อผู้ใช้</h2>
+                     <button onClick={() => { setSelectedStudent(null); setIsStudentModalOpen(true); }} className="w-10 h-10 bg-primary text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 flex items-center justify-center transition active:scale-95">
+                         <Icon name="plus" weight="bold" size={20}/>
+                     </button>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                     <div className="bg-white p-3 rounded-xl card-shadow border border-gray-100 text-center flex flex-col items-center justify-center">
+                         <div className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1 mb-1"><Icon name="users" weight="fill"/> ผู้ใช้ทั้งหมด</div>
+                         <div className="text-xl font-extrabold text-gray-800">{stats.total}</div>
+                     </div>
+                     <div className="bg-[#00B900]/10 p-3 rounded-xl border border-[#00B900]/20 text-center flex flex-col items-center justify-center">
+                         <div className="text-[10px] font-bold text-[#00B900] uppercase flex items-center gap-1 mb-1"><Icon name="chat-circle-dots" weight="fill"/> เชื่อม LINE</div>
+                         <div className="text-xl font-extrabold text-[#00B900]">{stats.lineLinked}</div>
+                     </div>
+                     <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center flex flex-col items-center justify-center">
+                         <div className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1 mb-1"><Icon name="envelope-simple" weight="fill"/> เชื่อมอีเมล</div>
+                         <div className="text-xl font-extrabold text-blue-700">{stats.emailLinked}</div>
+                     </div>
+                     <div className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center ${stats.issues > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+                         <div className={`text-[10px] font-bold uppercase flex items-center gap-1 mb-1 ${stats.issues > 0 ? 'text-red-500' : 'text-gray-400'}`}><Icon name="warning-circle" weight="fill"/> ขาด/ค้าง</div>
+                         <div className={`text-xl font-extrabold ${stats.issues > 0 ? 'text-red-600' : 'text-gray-500'}`}>{stats.issues}</div>
+                     </div>
+                 </div>
+             </div>
 
              {/* Search */}
              <div className="sticky top-0 z-20 bg-background py-2">
@@ -3052,21 +3019,10 @@
              {/* Student List */}
              <div className="space-y-3">
                  {filteredStudents.map((stu, i) => {
-                    // --- 1. วิเคราะห์สถานะจากข้อมูลจริง (ลอจิกใหม่) ---
-                    
-                    // เช็คว่ามีรหัสผ่านหรือไม่
                     const hasPasswordSet = stu.hasPassword === true || (stu.password && String(stu.password).trim() !== ''); 
-                    
-                    // เช็คว่ามี userId (รหัสผ่านของระบบเก่า หรือรหัสอ้างอิง) หรือไม่
                     const hasUserId = stu.userId && String(stu.userId).trim() !== ''; 
-
-                    // เช็คว่าทำการเชื่อมต่อ Email (Auth) แล้วหรือไม่
                     const isEmailLinked = stu.firebaseUid && String(stu.firebaseUid).trim() !== '';
-
-                    // เช็คว่าทำการเชื่อมต่อ LINE (Auth) แล้วหรือไม่
                     const isLineLinked = stu.lineUid && String(stu.lineUid).trim() !== '';
-
-                    // เช็คหนี้ค้างส่ง
                     const hasOverdueBill = data.bills?.some(b => {
                         if (b.studentId !== stu.id) return false;
                         if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false;
@@ -3076,13 +3032,10 @@
                         return due < today;
                     });
 
-                    // ผลรวมปัญหา (เพื่อแสดงกรอบสีแดงกระพริบ)
                     const hasIssue = !hasUserId || !hasPasswordSet || hasOverdueBill;
 
                     return (
-                        <div key={i} className="group bg-white rounded-2xl p-4 card-shadow border border-gray-100 relative overflow-hidden transition hover:shadow-md">
-                            
-                            {/* กรอบกระพริบเตือน (เฉพาะคนที่มีปัญหาสำคัญ) */}
+                        <div key={stu.id || i} className="group bg-white rounded-2xl p-4 card-shadow border border-gray-100 relative overflow-hidden transition hover:shadow-md">
                             {hasIssue && (
                                 <div className="absolute inset-0 border-[3px] border-red-400 rounded-2xl animate-pulse pointer-events-none z-10 opacity-40"></div>
                             )}
@@ -3100,8 +3053,6 @@
                                             <h4 className="font-bold text-gray-800 text-base truncate">{stu.name}</h4>
                                             <p className="text-xs text-gray-400 font-mono mt-0.5">{stu.id}</p>
                                         </div>
-                                        
-                                        {/* Status Icons (มุมขวาบน - ไอคอนหลักๆ) */}
                                         <div className="flex gap-1">
                                             {hasOverdueBill && (
                                                 <div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="มีหนี้เกินกำหนด">
@@ -3111,87 +3062,42 @@
                                         </div>
                                     </div>
 
-                                    {/* --- ป้ายสถานะแจ้งเตือน (แยกตามลอจิกใหม่) --- */}
+                                    {/* ป้ายสถานะ */}
                                     <div className="flex flex-wrap gap-1.5 mt-2">
-                                        
-                                        {/* 1. ค้างชำระ (สำคัญสุด เอาไว้ซ้ายสุด) */}
-                                        {hasOverdueBill && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold shadow-sm">
-                                                <Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ
-                                            </span>
-                                        )}
-
-                                        {/* 2. สถานะรหัสผ่าน */}
-                                        {!hasPasswordSet ? (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100">
-                                                <Icon name="key" weight="bold" size={10}/> ขาดรหัส
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[9px] font-bold border border-green-100">
-                                                <Icon name="check-circle" weight="fill" size={10}/> มีรหัสแล้ว
-                                            </span>
-                                        )}
-
-                                        {/* 3. สถานะ userId (ถ้าไม่มี ให้เตือน) */}
-                                        {!hasUserId && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100">
-                                                <Icon name="identification-card" weight="bold" size={10}/> ขาด userId
-                                            </span>
-                                        )}
-
-                                        {/* 4. สถานะเชื่อมต่อ Email (Auth) */}
-                                        {isEmailLinked && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold border border-blue-100">
-                                                <Icon name="envelope-simple" weight="fill" size={10}/> เชื่อมอีเมล
-                                            </span>
-                                        )}
-
-                                        {/* 5. สถานะเชื่อมต่อ LINE (Auth) */}
-                                        {isLineLinked && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00B900]/10 text-[#00B900] text-[9px] font-bold border border-[#00B900]/20">
-                                                <Icon name="chat-circle-dots" weight="fill" size={10}/> เชื่อม LINE
-                                            </span>
-                                        )}
-
+                                        {hasOverdueBill && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold shadow-sm"><Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ</span>}
+                                        {!hasPasswordSet ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100"><Icon name="key" weight="bold" size={10}/> ขาดรหัส</span> : <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[9px] font-bold border border-green-100"><Icon name="check-circle" weight="fill" size={10}/> มีรหัสแล้ว</span>}
+                                        {!hasUserId && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100"><Icon name="identification-card" weight="bold" size={10}/> ขาด userId</span>}
+                                        {isEmailLinked && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold border border-blue-100"><Icon name="envelope-simple" weight="fill" size={10}/> เชื่อมอีเมล</span>}
+                                        {isLineLinked && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00B900]/10 text-[#00B900] text-[9px] font-bold border border-[#00B900]/20"><Icon name="chat-circle-dots" weight="fill" size={10}/> เชื่อม LINE</span>}
                                     </div>
 
-                                    {/* Action Buttons */}
+                                    {/* ✅ ส่วนปุ่ม Action ที่แก้ไขแล้ว */}
                                     <div className="flex gap-2 mt-3 pt-3 border-t border-dashed border-gray-100 relative z-20">
-                                        <button onClick={() => onViewBills(stu.id)} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1">
+                                        <button onClick={() => onViewBills(stu.id)} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1 shadow-sm">
                                             <Icon name="receipt" weight="bold"/> ดูบิล
                                         </button>
-    
-                                      <td className="px-4 py-3 text-right">
-                                      <div className="flex justify-end gap-2">
-                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg transition-colors">
-                                            <Icon name="pencil-simple" size={18} />
+                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="w-9 h-9 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+                                            <Icon name="pencil-simple" weight="bold" size={16}/>
                                         </button>
-                                        {/* 🗑️ ปุ่มลบผู้ใช้ใหม่ */}
-                                        <button 
-                                            onClick={() => onDeleteStudent(student)} 
-                                            className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-lg transition-colors"
-                                        >
-                                            <Icon name="trash" size={18} />
+                                        <button onClick={() => onDeleteStudent(stu)} className="w-9 h-9 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-500 transition shadow-sm" title="ลบผู้ใช้ถาวร">
+                                            <Icon name="trash" weight="bold" size={16}/>
                                         </button>
-                                      </div>
-                                    </td>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     );
                  })}
-               
-                 {filteredStudents.length === 0 && (
-                     <div className="flex flex-col items-center justify-center py-16 text-gray-300">
-                         <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                             <Icon name="users" size={32} className="opacity-40"/>
-                         </div>
-                         <p className="text-sm font-medium">ไม่พบรายชื่อผู้ใช้</p>
-                     </div>
-                 )}
              </div>
 
+             {filteredStudents.length === 0 && (
+                 <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+                     <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                         <Icon name="users" size={32} className="opacity-40"/>
+                     </div>
+                     <p className="text-sm font-medium">ไม่พบรายชื่อผู้ใช้</p>
+                 </div>
+             )}
           </div> 
         );
     };
