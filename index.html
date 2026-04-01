@@ -5217,6 +5217,15 @@
                 <>
                   {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} setNotificationSubTab={setNotificationSubTab} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
                   {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
+                  {activeTab === 'students' && (
+                    <StudentView 
+                        data={data} 
+                        setIsStudentModalOpen={setIsStudentModalOpen} 
+                        setSelectedStudent={setSelectedStudent} 
+                        onViewBills={handleViewStudentBills}
+                        onDeleteStudent={(stu) => setDeletingStudent(stu)} 
+                    />
+                )}
                   {activeTab === 'history' && <HistoryView data={data} setSelectedBill={setEditingHistory} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                   {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
                   {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
