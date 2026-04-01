@@ -599,11 +599,14 @@
                 case 'updateStudentPassword': {
                     const studentId = args[0];
                     const newPassword = args[1];
+                    // สั่ง GAS อัปเดตรหัส
                     await callGAS('updateUserPassword', { studentId: studentId, newPassword: newPassword });
                     return true;
                 }
 
-                default: throw new Error("Action not mapped to Firebase: " + action);
+                // ⬇️ ระวังอย่าเอาไปวางใต้ default นะครับ
+                default:
+                    throw new Error("Action not mapped to Firebase: " + action);
             }
         } catch(e) {
             console.error(`Firebase Adapter Error [${action}]:`, e);
@@ -2949,10 +2952,19 @@
              {/* Student List */}
              <div className="space-y-3">
                  {filteredStudents.map((stu, i) => {
-                    // Logic เช็คสถานะแบบละเอียด
-                    const isLinked = stu.firebaseUid && String(stu.firebaseUid).trim() !== ''; // เช็ค firebaseUid
-                    const hasPassword = stu.password && String(stu.password).trim() !== '';
-                    const hasOverdueBill = data.bills.some(b => {
+                    // --- 1. วิเคราะห์สถานะจากข้อมูลจริง ---
+                    
+                    // เช็คว่ามีรหัสผ่านหรือไม่ (อ้างอิงจาก hasPassword)
+                    const hasPasswordSet = stu.hasPassword === true; 
+                    
+                    // เช็คว่ามี LINE ID ในระบบหรือยัง (อ้างอิงจาก userId)
+                    const hasLineId = stu.userId && String(stu.userId).trim() !== ''; 
+                    
+                    // เช็คว่าทำการเชื่อมต่อ LINE (Login) หรือยัง (อ้างอิงจาก firebaseUid)
+                    const isLineLinked = stu.firebaseUid && String(stu.firebaseUid).trim() !== '';
+
+                    // เช็คหนี้ค้างส่ง
+                    const hasOverdueBill = data.bills?.some(b => {
                         if (b.studentId !== stu.id) return false;
                         if (b.status === 'ชำระแล้ว' || b.status === 'ยกเลิก') return false;
                         if (!b.dueDate) return false;
@@ -2961,19 +2973,19 @@
                         return due < today;
                     });
 
-                    // ถ้ามีปัญหาอย่างใดอย่างหนึ่ง ให้ถือว่ามี Issue
-                    const hasIssue = !isLinked || !hasPassword || hasOverdueBill;
+                    // ผลรวมปัญหา (เพื่อแสดงกรอบสีแดงกระพริบ)
+                    const hasIssue = !hasLineId || !hasPasswordSet || !isLineLinked || hasOverdueBill;
 
                     return (
                         <div key={i} className="group bg-white rounded-2xl p-4 card-shadow border border-gray-100 relative overflow-hidden transition hover:shadow-md">
                             
-                            {/* กรอบกระพริบเตือน (เฉพาะคนที่มีปัญหา) */}
+                            {/* กรอบกระพริบเตือน (เฉพาะคนที่มีปัญหาสำคัญ) */}
                             {hasIssue && (
-                                <div className="absolute inset-0 border-[3px] border-red-400 rounded-2xl animate-pulse pointer-events-none z-10 opacity-50"></div>
+                                <div className="absolute inset-0 border-[3px] border-red-400 rounded-2xl animate-pulse pointer-events-none z-10 opacity-40"></div>
                             )}
 
                             <div className="flex gap-4 relative z-0">
-                                {/* Avatar (สีสุ่ม ที่ไม่มีสีเขียว) */}
+                                {/* Avatar */}
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold flex-shrink-0 ${getAvatarColor(stu.id)}`}>
                                     {stu.name.charAt(0).toUpperCase()}
                                 </div>
@@ -2986,40 +2998,63 @@
                                             <p className="text-xs text-gray-400 font-mono mt-0.5">{stu.id}</p>
                                         </div>
                                         
-                                        {/* Status Icons (มุมขวาบน) - แยกสีชัดเจน */}
+                                        {/* Status Icons (มุมขวาบน) */}
                                         <div className="flex gap-1">
-                                            {/* 1. หนี้ค้าง (แดง) */}
                                             {hasOverdueBill && (
                                                 <div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="มีหนี้เกินกำหนด">
                                                     <Icon name="warning-circle" weight="fill" size={16}/>
                                                 </div>
                                             )}
-                                            
-                                            {/* 2. รหัสผ่าน (ส้ม=ขาด / ไม่มีไอคอน=ปกติ) */}
-                                            {!hasPassword && (
-                                                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center shadow-sm" title="ยังไม่มีรหัสผ่าน">
+                                            {!hasPasswordSet && (
+                                                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center shadow-sm" title="ขาดรหัสผ่าน">
                                                     <Icon name="key" weight="fill" size={16}/>
                                                 </div>
                                             )}
-
-                                            {/* 3. LINE Status (แดง=ขาด / เขียว=ปกติ) */}
-                                            <div 
-                                                className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${isLinked ? 'bg-green-100 text-green-500' : 'bg-red-100 text-red-500'}`} 
-                                                title={isLinked ? 'เชื่อม LINE แล้ว' : 'ยังไม่เชื่อม LINE'}
-                                            >
-                                                <Icon name={isLinked ? "line-logo" : "link-break"} weight="fill" size={16}/>
+                                            {!hasLineId && (
+                                                <div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="ขาด LINE ID">
+                                                    <Icon name="link-break" weight="fill" size={16}/>
+                                                </div>
+                                            )}
+                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${isLineLinked ? 'bg-green-100 text-green-500' : 'bg-gray-100 text-gray-300'}`} title={isLineLinked ? 'เชื่อม LINE แล้ว' : 'ยังไม่เชื่อม LINE'}>
+                                                <Icon name="line-logo" weight="fill" size={16}/>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Text Alert Badges (แจ้งเตือนด้วยข้อความ) */}
-                                    {(hasIssue) && (
-                                        <div className="flex flex-wrap gap-1 mt-2">
-                                            {hasOverdueBill && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100"><Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ</span>}
-                                            {!isLinked && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100"><Icon name="link-break" weight="bold" size={10}/> ขาด LINE ID</span>}
-                                            {!hasPassword && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100"><Icon name="key" weight="bold" size={10}/> ขาดรหัส</span>}
-                                        </div>
-                                    )}
+                                    {/* --- ป้ายสถานะแจ้งเตือน (แยกตามเงื่อนไขที่ขอ) --- */}
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                        {/* 1. ขาดรหัส (hasPassword) */}
+                                        {!hasPasswordSet ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100">
+                                                <Icon name="key" weight="bold" size={10}/> ขาดรหัส
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 text-green-600 text-[9px] font-bold border border-green-100">
+                                                <Icon name="check-circle" weight="fill" size={10}/> มีรหัสแล้ว
+                                            </span>
+                                        )}
+
+                                        {/* 2. ขาด LINE ID (userId) */}
+                                        {!hasLineId && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100">
+                                                <Icon name="link-break" weight="bold" size={10}/> ขาด LINE ID
+                                            </span>
+                                        )}
+
+                                        {/* 3. ยังไม่เชื่อมต่อ LINE (firebaseUid) */}
+                                        {!isLineLinked && hasLineId && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[9px] font-bold border border-gray-200">
+                                                <Icon name="arrows-clockwise" weight="bold" size={10}/> ยังไม่เชื่อมไลน์
+                                            </span>
+                                        )}
+
+                                        {/* 4. ค้างชำระ */}
+                                        {hasOverdueBill && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold shadow-sm">
+                                                <Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ
+                                            </span>
+                                        )}
+                                    </div>
 
                                     {/* Action Buttons */}
                                     <div className="flex gap-2 mt-3 pt-3 border-t border-dashed border-gray-100 relative z-20">
@@ -3029,15 +3064,13 @@
                                         <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="w-8 h-8 flex items-center justify-center bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-100 transition">
                                             <Icon name="pencil-simple" weight="bold" size={16}/>
                                         </button>
-                                        <button onClick={() => handleDeleteStudent(stu.id)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition">
-                                            <Icon name="trash" weight="bold" size={16}/>
-                                        </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     );
                  })}
+             </div>
 
                  {filteredStudents.length === 0 && (<div className="flex flex-col items-center justify-center py-16 text-gray-300"><div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3"><Icon name="users" size={32} className="opacity-40"/></div><p className="text-sm font-medium">ไม่พบรายชื่อผู้ใช้</p></div>)}
              </div>
