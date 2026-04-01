@@ -2934,7 +2934,7 @@
         );
     };
 
-    const StudentView = ({ data, setIsStudentModalOpen, setSelectedStudent, handleDeleteStudent, onViewBills }) => {
+    const StudentView = ({ data, setIsStudentModalOpen, setSelectedStudent, handleDeleteStudent, onDeleteStudent, onViewBills }) => {
         const [searchTerm, setSearchTerm] = useState('');
         
         const filteredStudents = useMemo(() => {
@@ -3160,12 +3160,10 @@
                                         <button onClick={() => onViewBills(stu.id)} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1">
                                             <Icon name="receipt" weight="bold"/> ดูบิล
                                         </button>
-                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="w-8 h-8 flex items-center justify-center bg-gray-50 text-gray-500 rounded-lg hover:bg-gray-100 transition">
-                                            <Icon name="pencil-simple" weight="bold" size={16}/>
-                                        </button>
+    
                                       <td className="px-4 py-3 text-right">
                                       <div className="flex justify-end gap-2">
-                                        <button onClick={() => onEditStudent(student)} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg transition-colors">
+                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg transition-colors">
                                             <Icon name="pencil-simple" size={18} />
                                         </button>
                                         {/* 🗑️ ปุ่มลบผู้ใช้ใหม่ */}
