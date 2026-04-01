@@ -5384,19 +5384,13 @@
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={getDirectImageUrl(viewingSlipUrl)} />
           <HistoryEditModal isOpen={!!editingHistory} onClose={() => setEditingHistory(null)} historyItem={editingHistory} onSave={handleEditHistoryData} loading={processingAction === 'EDIT_HISTORY'} />
-           <DeleteUserConfirmModal 
-        isOpen={!!deletingStudent} 
-        onClose={() => setDeletingStudent(null)} 
-        student={deletingStudent}
-        onConfirm={handleConfirmFullDelete}
-        loading={processingAction === 'DELETING_USER'}
-    />
-    
-    // และส่ง prop ให้ StudentView:
-    <StudentView 
-        // ... prop อื่นๆ ...
-        onDeleteStudent={(stu) => setDeletingStudent(stu)}
-    />
+          <DeleteUserConfirmModal 
+              isOpen={!!deletingStudent} 
+              onClose={() => setDeletingStudent(null)} 
+              student={deletingStudent}
+              onConfirm={handleConfirmFullDelete}
+              loading={processingAction === 'DELETING_USER'}
+          />
           <Modal isOpen={isAnnounceModalOpen} onClose={() => setIsAnnounceModalOpen(false)} title="จัดการประกาศจากระบบ" zIndex="z-[110]">
               <div className="space-y-4 pt-2">
                   <div className="flex bg-gray-100 p-1 rounded-xl">
