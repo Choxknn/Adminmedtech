@@ -2231,7 +2231,7 @@
         );
     };
 
-   const DashboardView = ({ data, orderData, setActiveTab, setBillFilter, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills, onEditHistory, onSelectBill }) => {
+   const DashboardView = ({ data, orderData, setActiveTab, setNotificationSubTab, onGoToPendingBills, onGoToOverdueBills, onGoToUnpaidBills, onEditHistory, onSelectBill }) => {
         const [isDateFilterActive, setIsDateFilterActive] = useState(false);
         const [dateFilter, setDateFilter] = useState(() => {
             const end = new Date(); const start = new Date(end.getFullYear(), end.getMonth(), 1); 
@@ -2289,7 +2289,7 @@
 
             {/* ✅ 1. แถบแจ้งเตือน 3 วัน (Show เฉพาะเมื่อมีรายการ) */}
             {dueSoonBills.length > 0 && (
-                <div onClick={() => { setBillFilter('unpaid'); setActiveTab('bills'); }} className="bg-gradient-to-r from-orange-500 to-amber-400 p-3 rounded-2xl text-white shadow-lg flex justify-between items-center cursor-pointer animate-pulse mx-1">
+                <div onClick={() => { setActiveTab('notifications'); setNotificationSubTab('followup'); }} className="bg-gradient-to-r from-orange-500 to-amber-400 p-3 rounded-2xl text-white shadow-lg flex justify-between items-center cursor-pointer animate-pulse mx-1">
                     <div className="flex items-center gap-3">
                         <Icon name="timer" weight="fill" size={20}/>
                         <div>
@@ -4895,7 +4895,7 @@
             <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
-                  {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} setBillFilter={setBillFilter} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
+                  {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} setNotificationSubTab={setNotificationSubTab} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
                   {activeTab === 'bills' && <BillView data={data} setSelectedBill={setSelectedBill} setIsCreateModalOpen={setIsCreateModalOpen} searchTerm={billSearch} setSearchTerm={setBillSearch} filter={billFilter} onFilterChange={setBillFilter} />}
                   {activeTab === 'history' && <HistoryView data={data} setSelectedBill={setEditingHistory} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
                   {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
