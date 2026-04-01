@@ -16,6 +16,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
   <script>
     tailwind.config = {
@@ -512,11 +513,17 @@
 
                 
 
-                case 'verifyAdminPin': {
-                    const snap = await db.collection('config').doc('system').get();
-                    const correctPin = snap.exists && snap.data().adminPIN ? snap.data().adminPIN : '000000';
-                    if(String(args[0]) === String(correctPin)) return true;
-                    throw new Error('รหัส PIN ไม่ถูกต้อง');
+                // ✅ เพิ่มคำสั่งสำหรับเปลี่ยนรหัสผ่าน Admin ใน Firebase Auth
+                case 'changeAdminPassword': {
+                    const [currentPassword, newPassword] = args;
+                    const user = firebase.auth().currentUser;
+                    if (!user) throw new Error('กรุณาล็อกอินก่อนทำรายการ');
+                    
+                    // ต้อง Login ซ้ำ (Re-authenticate) เพื่อยืนยันรหัสเดิมก่อนเปลี่ยน
+                    const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+                    await user.reauthenticateWithCredential(cred);
+                    await user.updatePassword(newPassword);
+                    return "Password Updated";
                 }
 
                 default: throw new Error("Action not mapped to Firebase: " + action);
@@ -3078,12 +3085,15 @@
         );
     };
 
-    // --- Settings View (แท็บตั้งค่าใหม่) ---
+    // --- Settings View ---
     const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage }) => {
         const isMaintenance = data.systemStatus === 'ON';
         const [mMsg, setMMsg] = useState(data.config?.maintenanceMsg || '');
         const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', targetStatus: '' });
         const [successModal, setSuccessModal] = useState(false);
+
+        // ✅ State สำหรับเปลี่ยนรหัสผ่าน
+        const [pwdForm, setPwdForm] = useState({ current: '', newPwd: '', confirm: '' });
 
         const rawAnnounce = String(data.announcement || '').trim();
         const isImageAnnounce = rawAnnounce.startsWith('http://') || rawAnnounce.startsWith('https://');
@@ -3092,162 +3102,101 @@
 
         const handleSaveMsg = () => {
             setProcessingAction('SAVING_CONFIG');
-            db.collection('config').doc('system').set({ maintenanceMsg: mMsg }, { merge: true })
-              .then(() => { setProcessingAction(null); setSuccessModal(true); });
+            db.collection('config').doc('system').set({ maintenanceMsg: mMsg }, { merge: true }).then(() => { setProcessingAction(null); setSuccessModal(true); });
         };
 
         const confirmToggleMaintenance = () => {
             setProcessingAction('TOGGLING_SYSTEM');
             setConfirmModal({ ...confirmModal, isOpen: false });
-            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => {
-                setData(newData); setProcessingAction(null); setSuccessModal(true);
-            }).catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
+            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => { setData(newData); setProcessingAction(null); setSuccessModal(true); }).catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
         };
 
         const handleConfirm = () => {
-            if (confirmModal.type === 'MAINTENANCE') {
-                confirmToggleMaintenance();
-            } else if (confirmModal.type === 'ORDER') {
-                setConfirmModal({ ...confirmModal, isOpen: false });
-                onToggleOrderSystem(confirmModal.targetStatus === 'ON');
-            }
+            if (confirmModal.type === 'MAINTENANCE') confirmToggleMaintenance();
+            else if (confirmModal.type === 'ORDER') { setConfirmModal({ ...confirmModal, isOpen: false }); onToggleOrderSystem(confirmModal.targetStatus === 'ON'); }
+        };
+
+        // ✅ ฟังก์ชันเปลี่ยนรหัสผ่าน
+        const handleChangePassword = (e) => {
+            e.preventDefault();
+            if (pwdForm.newPwd !== pwdForm.confirm) return alert('รหัสผ่านใหม่ไม่ตรงกัน');
+            if (pwdForm.newPwd.length < 6) return alert('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+            
+            setProcessingAction('CHANGING_PWD');
+            apiCall('changeAdminPassword', pwdForm.current, pwdForm.newPwd)
+                .then(() => { setProcessingAction(null); setPwdForm({current: '', newPwd: '', confirm: ''}); alert('เปลี่ยนรหัสผ่านสำเร็จ! กรุณาใช้รหัสใหม่ในการล็อกอินครั้งต่อไป'); })
+                .catch((err) => { setProcessingAction(null); alert('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + err.message); });
+        };
+
+        // ✅ ฟังก์ชันออกจากระบบ
+        const handleLogout = () => {
+            if(window.confirm('ต้องการออกจากระบบใช่หรือไม่?')) firebase.auth().signOut();
         };
 
         return (
             <div className="space-y-6 animate-fade-in pb-24 relative">
                 <ScrollToTopBottom />
                 
-                <div className="px-2 pt-2">
-                    <h2 className="text-2xl font-bold text-gray-800 tracking-tight">ตั้งค่าระบบ</h2>
-                    <p className="text-xs text-gray-500 mt-1">จัดการสถานะระบบ, ประกาศ และบัญชีรับเงิน</p>
+                <div className="px-2 pt-2 flex justify-between items-center">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-800 tracking-tight">ตั้งค่าระบบ</h2>
+                        <p className="text-xs text-gray-500 mt-1">จัดการสถานะระบบ, ประกาศ และบัญชีรับเงิน</p>
+                    </div>
+                    <button onClick={handleLogout} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl text-sm flex items-center gap-2 hover:bg-red-100 transition shadow-sm border border-red-100">
+                        <Icon name="sign-out" weight="bold"/> ออกจากระบบ
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mx-1">
                     
-                    {/* 1. โหมดปิดปรับปรุงระบบ */}
+                    {/* เปลี่ยนรหัสผ่านแอดมิน */}
+                    <div className="bg-white p-5 rounded-[2rem] card-shadow border border-gray-100 md:col-span-2 flex flex-col md:flex-row gap-6">
+                        <div className="md:w-1/3">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-1"><Icon name="key" className="text-blue-500" weight="fill" size={20}/> เปลี่ยนรหัสผ่านแอดมิน</h3>
+                            <p className="text-xs text-gray-500">กรุณาใช้รหัสผ่านที่คาดเดายากและมีความยาวอย่างน้อย 6 ตัวอักษรขึ้นไป</p>
+                        </div>
+                        <form onSubmit={handleChangePassword} className="flex-1 space-y-3">
+                            <div><input type="password" value={pwdForm.current} onChange={e => setPwdForm({...pwdForm, current: e.target.value})} placeholder="รหัสผ่านปัจจุบัน" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-blue-500" required/></div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="password" value={pwdForm.newPwd} onChange={e => setPwdForm({...pwdForm, newPwd: e.target.value})} placeholder="รหัสผ่านใหม่" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-blue-500" required/>
+                                <input type="password" value={pwdForm.confirm} onChange={e => setPwdForm({...pwdForm, confirm: e.target.value})} placeholder="ยืนยันรหัสผ่านใหม่" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-blue-500" required/>
+                            </div>
+                            <button type="submit" disabled={!!processingAction || !pwdForm.current || !pwdForm.newPwd || !pwdForm.confirm} className="py-2.5 px-4 bg-gray-800 text-white font-bold rounded-xl text-xs hover:bg-gray-700 transition disabled:opacity-50 float-right">อัปเดตรหัสผ่าน</button>
+                        </form>
+                    </div>
+
+                    {/* โหมดปิดปรับปรุงระบบ */}
                     <div className={`p-5 rounded-[2rem] card-shadow border relative overflow-hidden transition-all ${isMaintenance ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <Icon name="power" weight="fill" className={isMaintenance ? 'text-red-500' : 'text-gray-400'} size={20}/>
-                                โหมดปรับปรุงระบบ
-                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${isMaintenance ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{isMaintenance ? 'ON' : 'OFF'}</span>
-                            </h3>
-                            <div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'MAINTENANCE', targetStatus: isMaintenance ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}>
-                                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${isMaintenance ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </div>
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="power" weight="fill" className={isMaintenance ? 'text-red-500' : 'text-gray-400'} size={20}/>โหมดปรับปรุงระบบ<span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${isMaintenance ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{isMaintenance ? 'ON' : 'OFF'}</span></h3>
+                            <div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'MAINTENANCE', targetStatus: isMaintenance ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${isMaintenance ? 'bg-red-500' : 'bg-gray-300'}`}><div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${isMaintenance ? 'translate-x-5' : 'translate-x-0'}`} /></div>
                         </div>
-                        
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">ข้อความแจ้งเตือน (โชว์เมื่อปิดระบบ)</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text" 
-                                    value={mMsg} 
-                                    onChange={(e) => setMMsg(e.target.value)}
-                                    placeholder="เช่น ขออภัย ระบบกำลังอัปเดต..."
-                                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-red-300"
-                                />
-                                <button onClick={handleSaveMsg} disabled={processingAction === 'SAVING_CONFIG'} className="px-3 py-2 bg-gray-800 text-white rounded-xl text-[10px] font-bold hover:bg-gray-700 transition">บันทึก</button>
-                            </div>
-                        </div>
+                        <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase">ข้อความแจ้งเตือน (โชว์เมื่อปิดระบบ)</label><div className="flex gap-2"><input type="text" value={mMsg} onChange={(e) => setMMsg(e.target.value)} placeholder="เช่น ขออภัย ระบบกำลังอัปเดต..." className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-red-300"/><button onClick={handleSaveMsg} disabled={processingAction === 'SAVING_CONFIG'} className="px-3 py-2 bg-gray-800 text-white rounded-xl text-[10px] font-bold hover:bg-gray-700 transition">บันทึก</button></div></div>
                     </div>
 
-                    {/* 2. เปิด-ปิดระบบร้านค้า */}
+                    {/* เปิด-ปิดระบบร้านค้า */}
                     <div className={`p-5 rounded-[2rem] card-shadow border relative overflow-hidden transition-all ${orderData?.systemStatus === 'ON' ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}>
-                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <Icon name="storefront" weight="fill" className={orderData?.systemStatus === 'ON' ? 'text-green-600' : 'text-gray-400'} size={20}/>
-                                รับออเดอร์ร้านค้า
-                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${orderData?.systemStatus === 'ON' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{orderData?.systemStatus === 'ON' ? 'ON' : 'OFF'}</span>
-                            </h3>
-                            <div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'ORDER', targetStatus: orderData?.systemStatus === 'ON' ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${orderData?.systemStatus === 'ON' ? 'bg-green-500' : 'bg-gray-300'}`}>
-                                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${orderData?.systemStatus === 'ON' ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{orderData?.systemStatus === 'ON' ? 'นักศึกษาสามารถกดสั่งซื้อสินค้าได้ตามปกติ' : 'หน้าร้านค้าจะถูกปิดใช้งานชั่วคราว'}</p>
+                         <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-800 flex items-center gap-2"><Icon name="storefront" weight="fill" className={orderData?.systemStatus === 'ON' ? 'text-green-600' : 'text-gray-400'} size={20}/>รับออเดอร์ร้านค้า<span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${orderData?.systemStatus === 'ON' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>{orderData?.systemStatus === 'ON' ? 'ON' : 'OFF'}</span></h3><div onClick={() => !processingAction && setConfirmModal({ isOpen: true, type: 'ORDER', targetStatus: orderData?.systemStatus === 'ON' ? 'OFF' : 'ON' })} className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-all ${orderData?.systemStatus === 'ON' ? 'bg-green-500' : 'bg-gray-300'}`}><div className={`w-5 h-5 bg-white rounded-full shadow transform transition ${orderData?.systemStatus === 'ON' ? 'translate-x-5' : 'translate-x-0'}`} /></div></div><p className="text-xs text-gray-500 mt-1">{orderData?.systemStatus === 'ON' ? 'นักศึกษาสามารถกดสั่งซื้อสินค้าได้ตามปกติ' : 'หน้าร้านค้าจะถูกปิดใช้งานชั่วคราว'}</p>
                     </div>
 
-                    {/* 3. ประกาศจากระบบ */}
+                    {/* ประกาศจากระบบ */}
                     <div className="bg-white p-5 rounded-[2rem] card-shadow border border-gray-100 flex flex-col gap-2 relative overflow-hidden md:col-span-2">
-                        <div className="flex justify-between items-center mb-1">
-                            <div className="flex items-center gap-2">
-                                <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div>
-                                <h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ (แบนเนอร์)</h3>
-                            </div>
-                            <button onClick={() => { 
-                                setAnnounceForm({ 
-                                    type: isImageAnnounce ? 'image' : 'text', 
-                                    text: isImageAnnounce ? '' : rawAnnounce, 
-                                    fileBase64: '', 
-                                    preview: isImageAnnounce ? announceContent : '' 
-                                }); 
-                                setIsAnnounceModalOpen(true); 
-                            }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg">
-                                <Icon name="pencil-simple" weight="bold" size={14}/> แก้ไขประกาศ
-                            </button>
-                        </div>
-                        {isImageAnnounce ? (
-                            <div className="w-full h-32 md:h-48 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}>
-                                <img src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer"/>
-                            </div>
-                        ) : (
-                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-50 min-h-[60px] flex items-center">
-                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p>
-                            </div>
-                        )}
+                        <div className="flex justify-between items-center mb-1"><div className="flex items-center gap-2"><div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div><h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ (แบนเนอร์)</h3></div><button onClick={() => { setAnnounceForm({ type: isImageAnnounce ? 'image' : 'text', text: isImageAnnounce ? '' : rawAnnounce, fileBase64: '', preview: isImageAnnounce ? announceContent : '' }); setIsAnnounceModalOpen(true); }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg"><Icon name="pencil-simple" weight="bold" size={14}/> แก้ไขประกาศ</button></div>
+                        {isImageAnnounce ? (<div className="w-full h-32 md:h-48 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}><img src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer"/></div>) : (<div className="bg-blue-50/50 p-4 rounded-xl border border-blue-50 min-h-[60px] flex items-center"><p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p></div>)}
                     </div>
                 </div>
 
                 {/* 4. บัญชีรับเงิน (QR Wallet) */}
                 <div className="pt-4 px-1">
-                    <div className="flex justify-between items-center px-2 mb-3">
-                        <h3 className="text-gray-800 font-bold text-lg flex items-center gap-2"><Icon name="qr-code" className="text-primary"/> บัญชีรับเงิน (QR Code)</h3>
-                        <button onClick={onOpenQrManager} className="text-primary text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">+ เพิ่มบัญชี</button>
-                    </div>
-                    {qrCodes.length > 0 ? (
-                        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 px-2 snap-x">
-                            {qrCodes.map((qr, idx) => (
-                                <div key={idx} className="snap-center min-w-[260px] h-[160px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-4 text-white relative shadow-lg flex flex-col justify-between group">
-                                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -translate-y-4 translate-x-4"></div>
-                                    <div className="flex justify-between items-start z-10"><div className="bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/10"><Icon name="qr-code" size={20} className="text-white"/></div><div className="text-right"><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">ยอดสำหรับสแกนจ่าย</p><p className="text-lg font-bold">฿{Number(qr.amount).toLocaleString()}</p></div></div>
-                                    <div className="flex gap-4 items-center z-10 mt-2"><div className="w-16 h-16 bg-white p-1 rounded-xl"><img src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/></div><div className="flex-1"><button onClick={() => onEditQr(qr)} className="w-full py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold transition border border-white/5">แก้ไข / ลบ</button></div></div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center text-gray-400 gap-3"><Icon name="wallet" size={48} className="opacity-30" weight="duotone"/><p className="text-sm">ยังไม่มีบัญชีรับเงิน</p></div>
-                    )}
+                    <div className="flex justify-between items-center px-2 mb-3"><h3 className="text-gray-800 font-bold text-lg flex items-center gap-2"><Icon name="qr-code" className="text-primary"/> บัญชีรับเงิน (QR Code)</h3><button onClick={onOpenQrManager} className="text-primary text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition shadow-sm">+ เพิ่มบัญชี</button></div>
+                    {qrCodes.length > 0 ? (<div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 px-2 snap-x">{qrCodes.map((qr, idx) => (<div key={idx} className="snap-center min-w-[260px] h-[160px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-4 text-white relative shadow-lg flex flex-col justify-between group"><div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -translate-y-4 translate-x-4"></div><div className="flex justify-between items-start z-10"><div className="bg-white/10 backdrop-blur-md p-1.5 rounded-xl border border-white/10"><Icon name="qr-code" size={20} className="text-white"/></div><div className="text-right"><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">ยอดสำหรับสแกนจ่าย</p><p className="text-lg font-bold">฿{Number(qr.amount).toLocaleString()}</p></div></div><div className="flex gap-4 items-center z-10 mt-2"><div className="w-16 h-16 bg-white p-1 rounded-xl"><img src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/></div><div className="flex-1"><button onClick={() => onEditQr(qr)} className="w-full py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold transition border border-white/5">แก้ไข / ลบ</button></div></div></div>))}</div>) : (<div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 flex flex-col items-center justify-center text-gray-400 gap-3"><Icon name="wallet" size={48} className="opacity-30" weight="duotone"/><p className="text-sm">ยังไม่มีบัญชีรับเงิน</p></div>)}
                 </div>
 
-                {/* Modals for Settings */}
-                <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} title="ยืนยันการเปลี่ยนสถานะ" zIndex="z-[100]">
-                    <div className="text-center pt-2 space-y-4">
-                        <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${confirmModal.targetStatus === 'ON' ? 'bg-green-100 text-green-500' : 'bg-red-100 text-red-500'}`}>
-                            <Icon name={confirmModal.type === 'MAINTENANCE' ? "power" : "storefront"} weight="fill" size={32}/>
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-gray-800 text-lg">
-                                ยืนยันการ {confirmModal.targetStatus === 'ON' ? 'เปิด' : 'ปิด'} ระบบ
-                            </h3>
-                        </div>
-                        <div className="flex gap-3 pt-2">
-                            <button onClick={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button>
-                            <button onClick={handleConfirm} className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg transition ${confirmModal.targetStatus === 'ON' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}>ยืนยัน</button>
-                        </div>
-                    </div>
-                </Modal>
-
-                <Modal isOpen={successModal} onClose={() => setSuccessModal(false)} title="เรียบร้อย" zIndex="z-[110]">
-                    <div className="text-center pt-2 space-y-4">
-                        <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-green-100 text-green-500"><Icon name="check-circle" weight="fill" size={32}/></div>
-                        <div><h3 className="font-bold text-gray-800 text-lg">บันทึกเรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">การตั้งค่าถูกบันทึกแล้ว</p></div>
-                        <button onClick={() => setSuccessModal(false)} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-200 transition">ตกลง</button>
-                    </div>
-                </Modal>
+                <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} title="ยืนยันการเปลี่ยนสถานะ" zIndex="z-[100]"><div className="text-center pt-2 space-y-4"><div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${confirmModal.targetStatus === 'ON' ? 'bg-green-100 text-green-500' : 'bg-red-100 text-red-500'}`}><Icon name={confirmModal.type === 'MAINTENANCE' ? "power" : "storefront"} weight="fill" size={32}/></div><div><h3 className="font-bold text-gray-800 text-lg">ยืนยันการ {confirmModal.targetStatus === 'ON' ? 'เปิด' : 'ปิด'} ระบบ</h3></div><div className="flex gap-3 pt-2"><button onClick={() => setConfirmModal({ isOpen: false, type: '', targetStatus: '' })} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button><button onClick={handleConfirm} className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg transition ${confirmModal.targetStatus === 'ON' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}>ยืนยัน</button></div></div></Modal>
+                <Modal isOpen={successModal} onClose={() => setSuccessModal(false)} title="เรียบร้อย" zIndex="z-[110]"><div className="text-center pt-2 space-y-4"><div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-green-100 text-green-500"><Icon name="check-circle" weight="fill" size={32}/></div><div><h3 className="font-bold text-gray-800 text-lg">บันทึกเรียบร้อย</h3><p className="text-sm text-gray-500 mt-1">การตั้งค่าถูกบันทึกแล้ว</p></div><button onClick={() => setSuccessModal(false)} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-200 transition">ตกลง</button></div></Modal>
             </div>
         );
     };
-
    // --- Order Summary Modal (แก้ไขป้องกันจอขาวจาก Timestamp และ Array) ---
     const OrderSummaryModal = ({ isOpen, onClose, orders, zIndex = "z-[110]", products = [] }) => {
       const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
@@ -4443,139 +4392,65 @@
       );
     };
     
-   // --- Login Screen (PIN Code Style + Keyboard Support) ---
-    const LoginScreen = ({ onLogin }) => {
-      const [pin, setPin] = useState('');
-      const [error, setError] = useState(false);
-      const [loading, setLoading] = useState(false);
+   // --- Login Screen (Firebase Auth) ---
+    const LoginScreen = () => {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+        const [loading, setLoading] = useState(false);
 
-      // ✅ ดักจับการกดแป้นพิมพ์ (Numpad / คีย์บอร์ด)
-      useEffect(() => {
-          const handleKeyDown = (e) => {
-              if (loading) return;
-              // ถ้ากดตัวเลข 0-9
-              if (e.key >= '0' && e.key <= '9') {
-                  setPin(prev => {
-                      if (prev.length < 6) {
-                          setError(false);
-                          return prev + e.key;
-                      }
-                      return prev;
-                  });
-              } 
-              // ถ้ากดปุ่มลบ (Backspace)
-              else if (e.key === 'Backspace') {
-                  setPin(prev => {
-                      if (prev.length > 0) {
-                          setError(false);
-                          return prev.slice(0, -1);
-                      }
-                      return prev;
-                  });
-              }
-          };
-          window.addEventListener('keydown', handleKeyDown);
-          return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [loading]);
+        const handleLogin = async (e) => {
+            e.preventDefault();
+            setLoading(true);
+            setError('');
+            try {
+                await firebase.auth().signInWithEmailAndPassword(email, password);
+                // ไม่ต้องเซ็ต State ที่นี่ เพราะเดี๋ยว onAuthStateChanged ใน App จัดการให้
+            } catch (err) {
+                console.error(err);
+                if(err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password'){
+                     setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+                } else {
+                     setError('เกิดข้อผิดพลาด: ' + err.message);
+                }
+                setLoading(false);
+            }
+        };
 
-      // ตรวจสอบรหัสอัตโนมัติเมื่อครบ 6 หลัก
-      useEffect(() => {
-          if (pin.length === 6) {
-              setLoading(true);
-              
-              // เรียก API ตรวจสอบรหัสผ่านที่ฝั่งเซิร์ฟเวอร์
-              apiCall('verifyAdminPin', pin)
-                  .then(() => {
-                      onLogin(); // ถ้าฝั่งเซิร์ฟเวอร์ตอบกลับมาว่าสำเร็จ (Success) ให้เข้าระบบ
-                  })
-                  .catch((err) => {
-                      setError(true); // รหัสผิด -> สั่นแจ้งเตือน
-                      setLoading(false);
-                      setTimeout(() => {
-                          setPin(''); // ล้างรหัส
-                          setError(false);
-                      }, 600);
-                  });
-          }
-      }, [pin, onLogin]);
+        return (
+            <div className="fixed inset-0 z-[1000] bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+                <div className="w-full max-w-sm bg-white rounded-3xl p-8 card-shadow border border-gray-100 relative z-10 animate-scale-in">
+                    <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+                        <Icon name="lock-key" size={32} weight="fill"/>
+                    </div>
+                    <div className="text-center mb-8">
+                        <h1 className="text-2xl font-black text-gray-800 tracking-tight">Admin System</h1>
+                        <p className="text-sm text-gray-400 font-medium mt-1">กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ</p>
+                    </div>
 
-      const handleNumClick = (num) => {
-          if (pin.length < 6 && !loading) {
-              setPin(prev => prev + num);
-              setError(false);
-          }
-      };
+                    {error && (
+                        <div className="bg-red-50 text-red-500 text-xs font-bold p-3 rounded-xl mb-4 text-center border border-red-100 flex items-center justify-center gap-1 animate-shake">
+                            <Icon name="warning-circle" weight="fill"/> {error}
+                        </div>
+                    )}
 
-      const handleDelete = () => {
-          if (!loading && pin.length > 0) {
-              setPin(prev => prev.slice(0, -1));
-              setError(false);
-          }
-      };
-
-      return (
-        <div className="fixed inset-0 z-[1000] bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-           <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-              <div className="absolute top-10 left-10 w-64 h-64 bg-blue-500 opacity-10 rounded-full blur-3xl animate-pulse"></div>
-              <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 opacity-10 rounded-full blur-3xl animate-pulse delay-700"></div>
-           </div>
-
-           <div className="w-full max-w-sm relative z-10 flex flex-col items-center animate-scale-in">
-              <div className="mb-8 text-center">
-                  <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center text-white shadow-xl mb-4 border border-white/10">
-                      <Icon name="lock-key" weight="fill" size={36} />
-                  </div>
-                  <h1 className="text-2xl font-bold text-white tracking-wider">ใส่รหัส PIN</h1>
-                  <p className="text-blue-200 text-xs mt-1 font-medium">สามารถพิมพ์ตัวเลขจากคีย์บอร์ดได้เลย</p>
-              </div>
-
-              <div className={`flex gap-4 mb-8 transition-transform duration-300 ${error ? 'animate-shake' : ''}`}>
-                  {[...Array(6)].map((_, i) => (
-                      <div 
-                        key={i} 
-                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                            i < pin.length 
-                                ? 'bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] scale-110' 
-                                : 'bg-white/20 scale-100'
-                        }`}
-                      ></div>
-                  ))}
-              </div>
-              
-              <div className="h-6 mb-2">
-                 {error && <p className="text-red-400 text-sm font-bold animate-fade-in flex items-center gap-1"><Icon name="warning-circle" weight="fill"/> รหัสไม่ถูกต้อง</p>}
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 w-full px-4">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                      <button 
-                          key={num}
-                          onClick={() => handleNumClick(num)}
-                          disabled={loading}
-                          className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg"
-                      >
-                          {num}
-                      </button>
-                  ))}
-                  <div></div>
-                  <button 
-                      onClick={() => handleNumClick(0)}
-                      disabled={loading}
-                      className="w-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-sm border border-white/5 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center shadow-lg"
-                  >
-                      0
-                  </button>
-                  <button 
-                      onClick={handleDelete}
-                      disabled={loading}
-                      className="w-full aspect-square rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center"
-                  >
-                      <Icon name="backspace" weight="bold" size={28} />
-                  </button>
-              </div>
-           </div>
-        </div>
-      );
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block ml-1">อีเมลแอดมิน</label>
+                            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:border-blue-500 focus:bg-white transition-all" placeholder="admin@example.com" required />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block ml-1">รหัสผ่าน</label>
+                            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:border-blue-500 focus:bg-white transition-all" placeholder="••••••••" required />
+                        </div>
+                        
+                        <button type="submit" disabled={loading} className="w-full py-4 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 disabled:opacity-50 transition transform active:scale-95 flex items-center justify-center gap-2">
+                            {loading ? <Icon name="circle-notch" className="animate-spin" weight="bold" size={20}/> : 'เข้าสู่ระบบ'}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
     };
     
     // --- MAIN APP ---
@@ -4607,23 +4482,38 @@
       const [errorMessage, setErrorMessage] = useState('');
       const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
       const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [isAuthChecking, setIsAuthChecking] = useState(true);
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
       const [isOverdueConfirmOpen, setIsOverdueConfirmOpen] = useState(false);
       const [processingAction, setProcessingAction] = useState(null); 
       const [deleteTarget, setDeleteTarget] = useState(null); 
       const [notifyEnabled, setNotifyEnabled] = useState(true); 
       const isFetchingRef = useRef(false);
 
+      // ✅ useEffect ตรวจสอบ Login อัตโนมัติด้วย Firebase Auth
+      useEffect(() => {
+          const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+              if (user) setIsLoggedIn(true);
+              else setIsLoggedIn(false);
+              setIsAuthChecking(false);
+          });
+          return () => unsubscribe();
+      }, []);
+
+      // ✅ แก้ไขให้ดึงข้อมูลก็ต่อเมื่อล็อกอินแล้ว
       useEffect(() => { 
-        fetchData(true); 
-        fetchOrderData(); 
-        const intervalId = setInterval(() => { 
-            if (!processingAction && !isDeleteConfirmOpen && !isEditing && !isCreateModalOpen) { 
-                fetchData(false); 
-                fetchOrderData(); 
-            } 
-        }, 5000); 
-        return () => clearInterval(intervalId); 
-      }, [processingAction, isDeleteConfirmOpen, isEditing, isCreateModalOpen]);
+        if (isLoggedIn) {
+            fetchData(true); 
+            fetchOrderData(); 
+            const intervalId = setInterval(() => { 
+                if (!processingAction && !isDeleteConfirmOpen && !isEditing && !isCreateModalOpen) { 
+                    fetchData(false); 
+                    fetchOrderData(); 
+                } 
+            }, 5000); 
+            return () => clearInterval(intervalId);
+        }
+      }, [isLoggedIn, processingAction, isDeleteConfirmOpen, isEditing, isCreateModalOpen]);
 
       useEffect(() => { if (!selectedBill) setIsEditing(false); else setNotifyEnabled(true); }, [selectedBill]);
 
@@ -4752,10 +4642,20 @@
 
       const renderBillButtons = () => { if(!selectedBill) return null; const status = selectedBill.status; const notifySwitch = (<div className="flex items-center justify-end mb-4 gap-2 pt-4 border-t border-gray-100"><span className="text-xs font-medium text-gray-500">แจ้งเตือนไลน์</span><button onClick={() => setNotifyEnabled(!notifyEnabled)} className={`w-10 h-6 rounded-full p-1 transition-colors duration-300 ${notifyEnabled ? 'bg-green-500' : 'bg-gray-200'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-300 ${notifyEnabled ? 'translate-x-4' : 'translate-x-0'}`} /></button></div>); if(status === 'ชำระแล้ว') return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-red-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>{processingAction === 'REJECT' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="x-circle" weight="bold"/>} ปฏิเสธ</button><button onClick={() => handleUpdateBill('รอตรวจสอบ')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-amber-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>{processingAction === 'WAIT_CHECK' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="clock-clockwise" weight="bold"/>} รอตรวจสอบ</button></div></div>); if(!status || status === '') return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('รอตรวจสอบ')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-amber-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>{processingAction === 'WAIT_CHECK' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="clock-clockwise" weight="bold"/>} ส่งเข้าตรวจสอบ</button><button onClick={() => handleUpdateBill('ชำระแล้ว')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-lg text-white flex justify-center items-center gap-2 ${processingAction ? 'bg-primary' : 'bg-blue-600 shadow-indigo-200 hover:bg-blue-700'}`}>{processingAction === 'APPROVE' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="check-circle" weight="bold"/>} อนุมัติ</button></div></div>); return (<div>{notifySwitch}<div className="flex gap-3"><button onClick={() => handleUpdateBill('')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-sm border border-red-100 flex justify-center items-center gap-2 ${processingAction ? 'bg-gray-100 text-gray-400' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>{processingAction === 'REJECT' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="x-circle" weight="bold"/>} ปฏิเสธ</button><button onClick={() => handleUpdateBill('ชำระแล้ว')} disabled={!!processingAction} className={`flex-1 py-3 rounded-xl font-bold shadow-lg text-white flex justify-center items-center gap-2 ${processingAction ? 'bg-primary' : 'bg-blue-600 shadow-indigo-200 hover:bg-blue-700'}`}>{processingAction === 'APPROVE' ? <Icon name="spinner" className="animate-spin" weight="bold"/> : <Icon name="check-circle" weight="bold"/>} อนุมัติ</button></div></div>); };
 
-      if (!isLoggedIn) {
-          return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+      // ✅ หน้า Loading ตอนกำลังตรวจสอบ Auth
+      if (isAuthChecking) {
+          return (
+              <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+                  <Icon name="circle-notch" className="animate-spin text-blue-500 mb-4" size={40} weight="bold"/>
+                  <p className="text-sm font-bold text-gray-500">กำลังตรวจสอบสถานะแอดมิน...</p>
+              </div>
+          );
       }
 
+      // ✅ เรียก LoginScreen ปกติ ไม่ต้องส่ง onLogin ไปแล้ว
+      if (!isLoggedIn) {
+          return <LoginScreen />;
+      }
       const navMenus = [ 
           { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
           { id: 'bills', icon: 'receipt', label: 'บิล' }, 
