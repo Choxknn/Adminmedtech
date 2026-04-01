@@ -4807,9 +4807,11 @@
                         <label className="block text-[10px] font-bold text-gray-400 text-left uppercase mb-1 ml-1">กรุณากรอกรหัสผ่านแอดมิน</label>
                         <input 
                             type="password" 
+                            name="admin_confirm_password" /* ใส่ชื่อให้เบราว์เซอร์ไม่สับสน */
+                            autoComplete="new-password" /* 🛑 คำสั่งสำคัญ: ห้ามเบราว์เซอร์กรอกอัตโนมัติ */
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-center"
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-center tracking-widest font-bold text-gray-700"
                             placeholder="รหัสผ่านแอดมิน"
                         />
                     </div>
