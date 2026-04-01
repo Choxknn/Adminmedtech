@@ -566,42 +566,46 @@
                 // ✅ สั่งลบเฉพาะ User ฝั่ง Email
                 case 'deleteStudentAuthEmail': {
                     const studentId = args[0];
-                    // 1. สั่ง GAS ลบ Auth
-                    await callGAS('deleteUserAuthEmail', { studentId });
+                    const firebaseUid = args[1]; // รับ firebaseUid มา
+                    
+                    // 1. สั่ง GAS ลบ Auth ฝั่ง Email
+                    await callGAS('deleteUserAuthEmail', { firebaseUid: firebaseUid });
                     
                     // 2. ลบสถานะใน Firestore
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
                         hasPassword: false, 
-                        password: firebase.firestore.FieldValue.delete() 
+                        password: firebase.firestore.FieldValue.delete(),
+                        firebaseUid: firebase.firestore.FieldValue.delete() // ลบ firebaseUid ออกด้วย
                     });
                     return true;
                 }
 
-                case 'deleteStudentAuth': {
+                // ✅ สั่งลบเฉพาะ User ฝั่ง LINE
+                case 'deleteStudentAuthLine': {
                     const studentId = args[0];
-                    const firebaseUid = args[1] || ''; // รับค่า firebaseUid
+                    const lineUid = args[1]; // รับ lineUid มา
                     
-                    // 1. สั่ง GAS ไปลบ Auth (ทั้ง Line และ Email)
-                    await callGAS('deleteUserAuth', { 
-                        studentId: studentId, 
-                        firebaseUid: firebaseUid 
-                    });
+                    // 1. สั่ง GAS ลบ Auth ฝั่ง LINE
+                    await callGAS('deleteUserAuthLine', { lineUid: lineUid });
                     
-                    // 2. ลบสถานะรหัสผ่านใน Firestore เพื่อให้หน้าเว็บอัปเดต
+                    // 2. ลบข้อมูล LINE ออกจาก Firestore
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
-                        hasPassword: false, 
-                        password: firebase.firestore.FieldValue.delete() 
+                        userId: firebase.firestore.FieldValue.delete(), // สมมติว่าเก็บ id ไลน์ไว้ใน userId ด้วย (ถ้ามี)
+                        lineUid: firebase.firestore.FieldValue.delete() 
                     });
                     return true;
                 }
 
+                // ✅ สั่งเปลี่ยนรหัสผ่านใหม่ (ฝั่ง Email)
                 case 'updateStudentPassword': {
                     const studentId = args[0];
-                    const newPassword = args[1];
+                    const firebaseUid = args[1];
+                    const newPassword = args[2];
+                    
                     // สั่ง GAS อัปเดตรหัส
-                    await callGAS('updateUserPassword', { studentId: studentId, newPassword: newPassword });
+                    await callGAS('updateUserPassword', { firebaseUid: firebaseUid, newPassword: newPassword });
                     return true;
                 }
 
@@ -1447,7 +1451,11 @@
         { id: 'settings', label: 'ตั้งค่า (Settings)' }
       ];
       const LOCKED_PERMISSIONS = ['home', 'settings'];
-      const [form, setForm] = useState({ id: '', name: '', password: '', userId: '', permissions: ['home', 'settings'] });
+      const [form, setForm] = useState({ 
+          id: '', name: '', password: '', 
+          userId: '', lineUid: '', firebaseUid: '', // เพิ่มฟิลด์ให้ครบ
+          permissions: ['home', 'settings'], hasPassword: false 
+      });
       const [isPermOpen, setIsPermOpen] = useState(false);
       
       // State สำหรับระบบ Auth
@@ -1482,7 +1490,13 @@
         <div className="space-y-4 animate-fade-in pb-8 relative">
           <div><label className="block text-sm font-medium text-gray-700 mb-1">รหัสนักศึกษา</label><input type="text" name="id" value={form.id} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" readOnly={!!initialData} /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label><input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">User ID (LINE)</label><input type="text" name="userId" value={form.userId} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
+          
+          {/* แยกช่อง UID ชัดเจน */}
+          <div className="grid grid-cols-2 gap-2">
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1">LINE UID (lineUid)</label><input type="text" name="lineUid" value={form.lineUid || ''} onChange={handleChange} className="w-full p-2 text-xs border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" /></div>
+              <div><label className="block text-[10px] font-bold text-gray-500 mb-1">Email UID (firebaseUid)</label><input type="text" name="firebaseUid" value={form.firebaseUid || ''} onChange={handleChange} className="w-full p-2 text-xs border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" /></div>
+          </div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">User ID (ระบบเก่า - ถ้ามี)</label><input type="text" name="userId" value={form.userId || ''} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
           
           <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">สิทธิ์การเข้าถึงระบบ</label>
@@ -1514,9 +1528,9 @@
             )}
           </div>
 
-          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ปรับปรุงใหม่ ซ่อนรหัสเก่าถ้าไม่มี) */}
+          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ปรับปรุงใหม่) */}
           <div className="relative border-t border-gray-100 pt-4 mt-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">บัญชีเข้าระบบ (Firebase Auth)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">บัญชีเข้าระบบ (Firebase Auth - Email)</label>
             
             {form.hasPassword ? (
                 /* --- กรณีเปิดใช้งาน Auth แล้ว (กล่องเขียว) --- */
@@ -1526,6 +1540,7 @@
                             <Icon name="check-circle" weight="fill" size={20}/>
                             บัญชีถูกสร้างแล้ว
                         </div>
+                        {/* 🔄 ปุ่มรีเซ็ต/ลบรหัสผ่าน */}
                         <button 
                             type="button"
                             onClick={() => {
@@ -1534,10 +1549,10 @@
                                     title: 'รีเซ็ต/ลบรหัสผ่าน?',
                                     text: 'ระบบจะลบข้อมูลบัญชีอีเมลเดิมทิ้ง เพื่อให้คุณสามารถตั้งรหัสผ่านใหม่ได้ทันที ยืนยันหรือไม่?',
                                     onConfirm: () => {
-                                        apiCall('deleteStudentAuth', form.id, form.firebaseUid)
+                                        apiCall('deleteStudentAuthEmail', form.id, form.firebaseUid) // ส่ง firebaseUid
                                             .then(() => {
-                                                setForm({...form, hasPassword: false, password: ''});
-                                                setPopup({ type: 'success', title: 'รีเซ็ตสำเร็จ', text: 'คุณสามารถตั้งรหัสผ่านใหม่ให้นักศึกษาได้แล้ว' });
+                                                setForm({...form, hasPassword: false, password: '', firebaseUid: ''});
+                                                setPopup({ type: 'success', title: 'รีเซ็ตสำเร็จ', text: 'ลบรหัสผ่านเดิมแล้ว คุณสามารถตั้งรหัสผ่านใหม่ได้' });
                                             })
                                             .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
                                     }
@@ -1550,17 +1565,17 @@
                     </div>
                     
                     <div className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">เปลี่ยนรหัสผ่านใหม่</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">เปลี่ยนรหัสผ่านใหม่ (ต้องรู้ firebaseUid)</label>
                         <div className="flex gap-2">
                             <input type="text" placeholder="พิมพ์รหัสใหม่..." value={newPassInput} onChange={(e) => setNewPassInput(e.target.value)} className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" />
-                            <button type="button" disabled={!newPassInput || isResetting} onClick={() => {
+                            <button type="button" disabled={!newPassInput || isResetting || !form.firebaseUid} onClick={() => {
                                 setPopup({
                                     type: 'warning',
                                     title: 'ยืนยันการเปลี่ยนรหัส',
                                     text: `เปลี่ยนรหัสเป็น "${newPassInput}" ?`,
                                     onConfirm: () => {
                                         setIsResetting(true);
-                                        apiCall('updateStudentPassword', form.id, newPassInput)
+                                        apiCall('updateStudentPassword', form.id, form.firebaseUid, newPassInput) // ส่ง firebaseUid
                                             .then(() => {
                                                 setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' });
                                                 setNewPassInput('');
@@ -1578,7 +1593,7 @@
             ) : (
                 /* --- กรณีที่ยังไม่มีรหัสใน Auth --- */
                 <div className="space-y-3">
-                    {/* ❌ โชว์รหัสเก่าเฉพาะเมื่อมีข้อมูลเท่านั้น ถ้าไม่มีจะหายไปเลย */}
+                    {/* ❌ โชว์รหัสเก่าเฉพาะเมื่อมีข้อมูลเท่านั้น */}
                     {form.password && (
                         <div className="mb-2">
                             <label className="text-[10px] font-bold text-gray-400 mb-1 block uppercase">รหัสผ่านเดิม (ในระบบเก่า)</label>
@@ -1595,14 +1610,14 @@
           </div>
           
           {/* ✅ ส่วนลบ Account อันตราย (ลบถาวร - แยกประเภท) */}
-          {initialData && (form.hasPassword || form.firebaseUid) && (
+          {initialData && (
               <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-4 space-y-3">
                   <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1 mb-2">
                       <Icon name="shield-warning" weight="fill"/> อันตราย: ลบบัญชีออกจากระบบ
                   </p>
                   
                   <div className="flex flex-col gap-2">
-                      {/* 🔴 ปุ่มลบ Auth ฝั่ง Email (แสดงเมื่อมีรหัสผ่าน) */}
+                      {/* 🔴 ปุ่มลบ Auth ฝั่ง Email */}
                       {form.hasPassword && (
                           <button 
                             type="button"
@@ -1612,9 +1627,9 @@
                                     title: 'ลบบัญชี Email (รหัสผ่าน)',
                                     text: `คุณต้องการลบบัญชี ${form.id}@ptu.ac.th ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินด้วยรหัสผ่านได้อีก`,
                                     onConfirm: () => {
-                                        apiCall('deleteStudentAuthEmail', form.id) 
+                                        apiCall('deleteStudentAuthEmail', form.id, form.firebaseUid) // ส่ง firebaseUid
                                             .then(() => {
-                                                setForm({...form, hasPassword: false, password: ''});
+                                                setForm({...form, hasPassword: false, password: '', firebaseUid: ''});
                                                 setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบบัญชี Email ออกจากระบบเรียบร้อย' });
                                             })
                                             .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
@@ -1627,8 +1642,8 @@
                           </button>
                       )}
 
-                      {/* 🟢 ปุ่มลบ Auth ฝั่ง LINE (แสดงเมื่อมี firebaseUid) */}
-                      {form.firebaseUid && (
+                      {/* 🟢 ปุ่มลบ Auth ฝั่ง LINE */}
+                      {form.lineUid && (
                           <button 
                             type="button"
                             onClick={() => {
@@ -1637,9 +1652,9 @@
                                     title: 'ลบการเชื่อมต่อ LINE',
                                     text: 'คุณต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของนักศึกษาคนนี้ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินผ่าน LINE ได้อีก',
                                     onConfirm: () => {
-                                        apiCall('deleteStudentAuthLine', form.id, form.firebaseUid) 
+                                        apiCall('deleteStudentAuthLine', form.id, form.lineUid) // ส่ง lineUid
                                             .then(() => {
-                                                setForm({...form, firebaseUid: '', userId: ''}); // เคลียร์ค่า LINE ในฟอร์ม
+                                                setForm({...form, lineUid: '', userId: ''}); 
                                                 setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบการเชื่อมต่อ LINE ออกจากระบบเรียบร้อย' });
                                             })
                                             .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
@@ -2954,16 +2969,19 @@
              {/* Student List */}
              <div className="space-y-3">
                  {filteredStudents.map((stu, i) => {
-                    // --- 1. วิเคราะห์สถานะจากข้อมูลจริง ---
+                    // --- 1. วิเคราะห์สถานะจากข้อมูลจริง (ลอจิกใหม่) ---
                     
-                    // เช็คว่ามีรหัสผ่านหรือไม่ (อ้างอิงจาก hasPassword)
-                    const hasPasswordSet = stu.hasPassword === true; 
+                    // เช็คว่ามีรหัสผ่านหรือไม่
+                    const hasPasswordSet = stu.hasPassword === true || (stu.password && String(stu.password).trim() !== ''); 
                     
-                    // เช็คว่ามี LINE ID ในระบบหรือยัง (อ้างอิงจาก userId)
-                    const hasLineId = stu.userId && String(stu.userId).trim() !== ''; 
-                    
-                    // เช็คว่าทำการเชื่อมต่อ LINE (Login) หรือยัง (อ้างอิงจาก firebaseUid)
-                    const isLineLinked = stu.firebaseUid && String(stu.firebaseUid).trim() !== '';
+                    // เช็คว่ามี userId (รหัสผ่านของระบบเก่า หรือรหัสอ้างอิง) หรือไม่
+                    const hasUserId = stu.userId && String(stu.userId).trim() !== ''; 
+
+                    // เช็คว่าทำการเชื่อมต่อ Email (Auth) แล้วหรือไม่
+                    const isEmailLinked = stu.firebaseUid && String(stu.firebaseUid).trim() !== '';
+
+                    // เช็คว่าทำการเชื่อมต่อ LINE (Auth) แล้วหรือไม่
+                    const isLineLinked = stu.lineUid && String(stu.lineUid).trim() !== '';
 
                     // เช็คหนี้ค้างส่ง
                     const hasOverdueBill = data.bills?.some(b => {
@@ -2976,7 +2994,7 @@
                     });
 
                     // ผลรวมปัญหา (เพื่อแสดงกรอบสีแดงกระพริบ)
-                    const hasIssue = !hasLineId || !hasPasswordSet || !isLineLinked || hasOverdueBill;
+                    const hasIssue = !hasUserId || !hasPasswordSet || hasOverdueBill;
 
                     return (
                         <div key={i} className="group bg-white rounded-2xl p-4 card-shadow border border-gray-100 relative overflow-hidden transition hover:shadow-md">
@@ -3000,32 +3018,27 @@
                                             <p className="text-xs text-gray-400 font-mono mt-0.5">{stu.id}</p>
                                         </div>
                                         
-                                        {/* Status Icons (มุมขวาบน) */}
+                                        {/* Status Icons (มุมขวาบน - ไอคอนหลักๆ) */}
                                         <div className="flex gap-1">
                                             {hasOverdueBill && (
                                                 <div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="มีหนี้เกินกำหนด">
                                                     <Icon name="warning-circle" weight="fill" size={16}/>
                                                 </div>
                                             )}
-                                            {!hasPasswordSet && (
-                                                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center shadow-sm" title="ขาดรหัสผ่าน">
-                                                    <Icon name="key" weight="fill" size={16}/>
-                                                </div>
-                                            )}
-                                            {!hasLineId && (
-                                                <div className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center shadow-sm" title="ขาด LINE ID">
-                                                    <Icon name="link-break" weight="fill" size={16}/>
-                                                </div>
-                                            )}
-                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${isLineLinked ? 'bg-green-100 text-green-500' : 'bg-gray-100 text-gray-300'}`} title={isLineLinked ? 'เชื่อม LINE แล้ว' : 'ยังไม่เชื่อม LINE'}>
-                                                <Icon name="line-logo" weight="fill" size={16}/>
-                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* --- ป้ายสถานะแจ้งเตือน (แยกตามเงื่อนไขที่ขอ) --- */}
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                        {/* 1. ขาดรหัส (hasPassword) */}
+                                    {/* --- ป้ายสถานะแจ้งเตือน (แยกตามลอจิกใหม่) --- */}
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                        
+                                        {/* 1. ค้างชำระ (สำคัญสุด เอาไว้ซ้ายสุด) */}
+                                        {hasOverdueBill && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold shadow-sm">
+                                                <Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ
+                                            </span>
+                                        )}
+
+                                        {/* 2. สถานะรหัสผ่าน */}
                                         {!hasPasswordSet ? (
                                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 text-[9px] font-bold border border-orange-100">
                                                 <Icon name="key" weight="bold" size={10}/> ขาดรหัส
@@ -3036,26 +3049,27 @@
                                             </span>
                                         )}
 
-                                        {/* 2. ขาด LINE ID (userId) */}
-                                        {!hasLineId && (
+                                        {/* 3. สถานะ userId (ถ้าไม่มี ให้เตือน) */}
+                                        {!hasUserId && (
                                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[9px] font-bold border border-red-100">
-                                                <Icon name="link-break" weight="bold" size={10}/> ขาด LINE ID
+                                                <Icon name="identification-card" weight="bold" size={10}/> ขาด userId
                                             </span>
                                         )}
 
-                                        {/* 3. ยังไม่เชื่อมต่อ LINE (firebaseUid) */}
-                                        {!isLineLinked && hasLineId && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[9px] font-bold border border-gray-200">
-                                                <Icon name="arrows-clockwise" weight="bold" size={10}/> ยังไม่เชื่อมไลน์
+                                        {/* 4. สถานะเชื่อมต่อ Email (Auth) */}
+                                        {isEmailLinked && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold border border-blue-100">
+                                                <Icon name="envelope-simple" weight="fill" size={10}/> เชื่อมอีเมล
                                             </span>
                                         )}
 
-                                        {/* 4. ค้างชำระ */}
-                                        {hasOverdueBill && (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold shadow-sm">
-                                                <Icon name="warning-circle" weight="fill" size={10}/> ค้างชำระ
+                                        {/* 5. สถานะเชื่อมต่อ LINE (Auth) */}
+                                        {isLineLinked && (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00B900]/10 text-[#00B900] text-[9px] font-bold border border-[#00B900]/20">
+                                                <Icon name="chat-circle-dots" weight="fill" size={10}/> เชื่อม LINE
                                             </span>
                                         )}
+
                                     </div>
 
                                     {/* Action Buttons */}
@@ -3072,6 +3086,7 @@
                         </div>
                     );
                  })}
+             </div>
 
                  {filteredStudents.length === 0 && (
                      <div className="flex flex-col items-center justify-center py-16 text-gray-300">
@@ -4985,9 +5000,18 @@
               <div className="bg-primary p-2.5 rounded-xl text-white shadow-lg shadow-blue-200 flex-shrink-0">
                 <Icon name="graduation-cap" weight="fill" size={24}/>
               </div>
-              {!isSidebarCollapsed && <h1 className="text-xl font-black text-gray-800 tracking-tight truncate">Admin <span className="text-primary">MedTech67</span></h1>}
-            </div>
-            
+              {!isSidebarCollapsed && (
+                  <div className="flex flex-col">
+                      <h1 className="text-xl font-black text-gray-800 tracking-tight leading-none">
+                          Admin
+                      </h1>
+                      <span className="text-lg font-black text-primary tracking-tight">
+                          MedTech67
+                      </span>
+                  </div>
+              )}
+          </div>
+                      
             <nav className="flex flex-col gap-2 overflow-y-auto no-scrollbar flex-1">
               {navMenus.map(tab => {
                 const isActive = activeTab === tab.id;
@@ -5020,7 +5044,7 @@
             <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center md:hidden">
               <div className="flex items-center gap-2">
                 <div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div>
-                <h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">CHOKUN</span></h1>
+                <h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">MEDTECH67</span></h1>
               </div>
               <button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100">
                 <Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" />
