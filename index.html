@@ -527,18 +527,34 @@
                     return "Password Updated";
                 }
                 
-                // ✅ สั่งลบ User ออกจาก Auth และลบสถานะใน Firestore
-                case 'deleteStudentAuth': {
+                // ✅ สั่งลบเฉพาะ User ฝั่ง Email
+                case 'deleteStudentAuthEmail': {
                     const studentId = args[0];
-                    const firebaseUid = args[1] || '';
-                    
                     // 1. สั่ง GAS ลบ Auth
-                    await callGAS('deleteUserAuth', { studentId: studentId, firebaseUid: firebaseUid });
+                    await callGAS('deleteUserAuthEmail', { studentId });
                     
-                    // 2. ลบสถานะใน Firestore (เพื่อให้หน้าเว็บอัปเดตทันที)
-                    await db.collection('users').doc(studentId).update({ 
+                    // 2. ลบสถานะใน Firestore
+                    const userRef = db.collection('users').doc(studentId);
+                    await userRef.update({ 
                         hasPassword: false, 
                         password: firebase.firestore.FieldValue.delete() 
+                    });
+                    return true;
+                }
+
+                // ✅ สั่งลบเฉพาะ User ฝั่ง LINE
+                case 'deleteStudentAuthLine': {
+                    const studentId = args[0];
+                    const firebaseUid = args[1]; // รับ UID ของ LINE มา
+                    
+                    // 1. สั่ง GAS ลบ Auth
+                    await callGAS('deleteUserAuthLine', { firebaseUid });
+                    
+                    // 2. ลบข้อมูล LINE ออกจาก Firestore ของนักศึกษา
+                    const userRef = db.collection('users').doc(studentId);
+                    await userRef.update({ 
+                        userId: firebase.firestore.FieldValue.delete(),
+                        firebaseUid: firebase.firestore.FieldValue.delete() 
                     });
                     return true;
                 }
@@ -1538,30 +1554,64 @@
             )}
           </div>
           
-          {/* ✅ ส่วนลบ Account อันตราย (ลบถาวร) */}
-          {initialData && form.hasPassword && (
-              <div className="mt-2">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                        setPopup({
-                            type: 'danger',
-                            title: 'ลบ Account ถาวร?',
-                            text: 'นักศึกษาจะเข้าสู่ระบบไม่ได้ทั้งทางรหัสและ LINE ยืนยันลบบัญชีของนักศึกษาคนนี้ออกจากระบบ Auth หรือไม่?',
-                            onConfirm: () => {
-                                apiCall('deleteStudentAuth', form.id, form.firebaseUid) 
-                                    .then(() => {
-                                        setForm({...form, hasPassword: false, password: ''});
-                                        setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบบัญชีออกจากระบบเรียบร้อย' });
-                                    })
-                                    .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
-                            }
-                        });
-                    }} 
-                    className="w-full py-2 text-red-500 rounded-xl text-[10px] font-bold border border-red-100 hover:bg-red-50 transition"
-                  >
-                    <Icon name="trash" className="inline mr-1"/> ลบบัญชีออกจาก Authentication
-                  </button>
+          {/* ✅ ส่วนลบ Account อันตราย (ลบถาวร - แยกประเภท) */}
+          {initialData && (form.hasPassword || form.firebaseUid) && (
+              <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-4 space-y-3">
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1 mb-2">
+                      <Icon name="shield-warning" weight="fill"/> อันตราย: ลบบัญชีออกจากระบบ
+                  </p>
+                  
+                  <div className="flex flex-col gap-2">
+                      {/* 🔴 ปุ่มลบ Auth ฝั่ง Email (แสดงเมื่อมีรหัสผ่าน) */}
+                      {form.hasPassword && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                                setPopup({
+                                    type: 'danger',
+                                    title: 'ลบบัญชี Email (รหัสผ่าน)',
+                                    text: `คุณต้องการลบบัญชี ${form.id}@ptu.ac.th ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินด้วยรหัสผ่านได้อีก`,
+                                    onConfirm: () => {
+                                        apiCall('deleteStudentAuthEmail', form.id) 
+                                            .then(() => {
+                                                setForm({...form, hasPassword: false, password: ''});
+                                                setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบบัญชี Email ออกจากระบบเรียบร้อย' });
+                                            })
+                                            .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
+                                    }
+                                });
+                            }} 
+                            className="w-full py-2.5 bg-white text-red-600 border border-red-200 rounded-xl text-xs font-bold hover:bg-red-100 transition flex items-center justify-center gap-2"
+                          >
+                            <Icon name="envelope" weight="bold"/> ลบบัญชี Email (รหัสผ่าน)
+                          </button>
+                      )}
+
+                      {/* 🟢 ปุ่มลบ Auth ฝั่ง LINE (แสดงเมื่อมี firebaseUid) */}
+                      {form.firebaseUid && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                                setPopup({
+                                    type: 'danger',
+                                    title: 'ลบการเชื่อมต่อ LINE',
+                                    text: 'คุณต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของนักศึกษาคนนี้ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินผ่าน LINE ได้อีก',
+                                    onConfirm: () => {
+                                        apiCall('deleteStudentAuthLine', form.id, form.firebaseUid) 
+                                            .then(() => {
+                                                setForm({...form, firebaseUid: '', userId: ''}); // เคลียร์ค่า LINE ในฟอร์ม
+                                                setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบการเชื่อมต่อ LINE ออกจากระบบเรียบร้อย' });
+                                            })
+                                            .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
+                                    }
+                                });
+                            }} 
+                            className="w-full py-2.5 bg-[#00B900] text-white rounded-xl text-xs font-bold shadow-md hover:bg-[#009900] transition flex items-center justify-center gap-2"
+                          >
+                            <Icon name="chat-circle-dots" weight="bold"/> ลบการเชื่อมต่อ LINE
+                          </button>
+                      )}
+                  </div>
               </div>
           )}
 
