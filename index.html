@@ -527,28 +527,27 @@
                     return "Password Updated";
                 }
                 
+                // ✅ สั่งลบ User ออกจาก Auth และลบสถานะใน Firestore
                 case 'deleteStudentAuth': {
                     const studentId = args[0];
-                    const firebaseUid = args[1] || ''; // รับค่าจากฟิลด์ firebaseUid
+                    const firebaseUid = args[1] || '';
                     
-                    await callGAS('deleteUserAuth', { 
-                        studentId: studentId, 
-                        firebaseUid: firebaseUid 
-                    });
+                    // 1. สั่ง GAS ลบ Auth
+                    await callGAS('deleteUserAuth', { studentId: studentId, firebaseUid: firebaseUid });
                     
-                    const userRef = db.collection('users').doc(studentId);
-                    await userRef.update({ 
+                    // 2. ลบสถานะใน Firestore (เพื่อให้หน้าเว็บอัปเดตทันที)
+                    await db.collection('users').doc(studentId).update({ 
                         hasPassword: false, 
                         password: firebase.firestore.FieldValue.delete() 
                     });
                     return true;
                 }
+
                 // ✅ สั่งเปลี่ยนรหัสผ่านใหม่
                 case 'updateStudentPassword': {
                     const studentId = args[0];
                     const newPassword = args[1];
-                    // สั่ง GAS อัปเดตรหัส
-                    await callGAS('updateUserPassword', { studentId, newPassword });
+                    await callGAS('updateUserPassword', { studentId: studentId, newPassword: newPassword });
                     return true;
                 }
 
@@ -1383,12 +1382,6 @@
 
     // --- Student Form (อัปเดตระบบจัดการสิทธิ์ Permissions) ---
     const StudentForm = ({ onSubmit, loading, initialData = null }) => {
-      const [isResetting, setIsResetting] = useState(false);
-        const [newPassInput, setNewPassInput] = useState('');
-        
-        // ✅ State สำหรับป๊อปอัปสวยๆ
-        const [popup, setPopup] = useState(null); // { type, title, text, onConfirm }
-      // รายการสิทธิ์ทั้งหมดที่มีในระบบ
       const AVAILABLE_PERMISSIONS = [
         { id: 'home', label: 'หน้าแรก (Home)' },
         { id: 'bills', label: 'จัดการบิล (Bills)' },
@@ -1397,16 +1390,18 @@
         { id: 'finance', label: 'การเงิน (Finance)' },
         { id: 'settings', label: 'ตั้งค่า (Settings)' }
       ];
-      
-      // สิทธิ์ที่บังคับต้องมี (เอาออกไม่ได้)
       const LOCKED_PERMISSIONS = ['home', 'settings'];
 
-      const [form, setForm] = useState({ id: '', name: '', password: '', userId: '', permissions: ['home', 'settings'] });
+      const [form, setForm] = useState({ id: '', name: '', password: '', firebaseUid: '', permissions: ['home', 'settings'], hasPassword: false });
       const [isPermOpen, setIsPermOpen] = useState(false);
+      
+      // State สำหรับระบบ Auth
+      const [isResetting, setIsResetting] = useState(false);
+      const [newPassInput, setNewPassInput] = useState('');
+      const [popup, setPopup] = useState(null); // { type, title, text, onConfirm }
 
       useEffect(() => { 
           if (initialData) {
-              // ถ้ามีข้อมูลเก่า ให้แยก String กลับมาเป็น Array ถ้าไม่มีให้ใช้ค่าเริ่มต้น
               const perms = initialData.permissions ? String(initialData.permissions).split(',') : ['home', 'settings'];
               setForm({ ...initialData, originalId: initialData.id, permissions: perms }); 
           } 
@@ -1414,10 +1409,8 @@
 
       const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
       
-      // ฟังก์ชันติ๊กเลือกสิทธิ์
       const togglePermission = (id) => {
-        if (LOCKED_PERMISSIONS.includes(id)) return; // ล็อกไว้ห้ามกดเอาออก
-        
+        if (LOCKED_PERMISSIONS.includes(id)) return;
         if (form.permissions.includes(id)) {
           setForm({ ...form, permissions: form.permissions.filter(p => p !== id) });
         } else {
@@ -1426,34 +1419,22 @@
       };
 
       const handleSubmit = () => {
-          // ก่อนส่งไปบันทึก ให้แปลง Array กลับเป็น String คั่นด้วยลูกน้ำ
           const submitData = { ...form, permissions: form.permissions.join(',') };
           onSubmit(submitData);
       };
 
       return (
-        <div className="space-y-4 animate-fade-in pb-8">
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">รหัสนักศึกษา</label><input type="text" name="id" value={form.id} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
+        <div className="space-y-4 animate-fade-in pb-8 relative">
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">รหัสนักศึกษา</label><input type="text" name="id" value={form.id} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" readOnly={!!initialData} /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label><input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
-            <div className="relative">
-              <input type="text" name="password" value={form.password} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary pr-10" />
-              <button type="button" onClick={() => setForm({ ...form, password: '' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors" title="รีเซ็ตรหัสผ่าน"><Icon name="arrow-counter-clockwise" size={20} /></button>
-            </div>
-          </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">User ID (LINE)</label><input type="text" name="userId" value={form.userId} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Firebase UID (LINE)</label><input type="text" name="firebaseUid" value={form.firebaseUid || ''} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
           
-          {/* ✅ ส่วนเลือกสิทธิ์ (Permissions Dropdown) */}
           <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">สิทธิ์การเข้าถึงระบบ</label>
             <div onClick={() => setIsPermOpen(!isPermOpen)} className="w-full p-3 border border-gray-200 rounded-lg bg-white cursor-pointer flex justify-between items-center hover:border-primary transition">
-              <span className="text-gray-700 text-sm truncate font-bold text-primary">
-                เลือกแล้ว {form.permissions.length} สิทธิ์
-              </span>
+              <span className="text-gray-700 text-sm truncate font-bold text-primary">เลือกแล้ว {form.permissions.length} สิทธิ์</span>
               <Icon name="caret-down" className="text-gray-400" weight="bold"/>
             </div>
-
             {isPermOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsPermOpen(false)}></div>
@@ -1461,13 +1442,8 @@
                   {AVAILABLE_PERMISSIONS.map(perm => {
                     const isSelected = form.permissions.includes(perm.id);
                     const isLocked = LOCKED_PERMISSIONS.includes(perm.id);
-                    
                     return (
-                      <div 
-                        key={perm.id} 
-                        className={`p-3 flex items-center gap-3 transition-colors ${isLocked ? 'cursor-not-allowed bg-gray-50' : 'cursor-pointer hover:bg-blue-50'} ${isSelected && !isLocked ? 'bg-blue-50/50' : ''}`} 
-                        onClick={() => togglePermission(perm.id)}
-                      >
+                      <div key={perm.id} className={`p-3 flex items-center gap-3 transition-colors ${isLocked ? 'cursor-not-allowed bg-gray-50' : 'cursor-pointer hover:bg-blue-50'} ${isSelected && !isLocked ? 'bg-blue-50/50' : ''}`} onClick={() => togglePermission(perm.id)}>
                         <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? (isLocked ? 'bg-gray-400 border-gray-400' : 'bg-primary border-primary') : 'border-gray-300 bg-white'}`}>
                           {isSelected && <Icon name="check" className="text-white" size={12} weight="bold" />}
                         </div>
@@ -1483,7 +1459,7 @@
             )}
           </div>
 
-          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ปรับปรุงใหม่) */}
+          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ปรับปรุงใหม่ ซ่อนรหัสเก่าถ้าไม่มี) */}
           <div className="relative border-t border-gray-100 pt-4 mt-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">บัญชีเข้าระบบ (Firebase Auth)</label>
             
@@ -1495,13 +1471,12 @@
                             <Icon name="check-circle" weight="fill" size={20}/>
                             บัญชีถูกสร้างแล้ว
                         </div>
-                        {/* 🔄 ปุ่มรีเซ็ต/ลบรหัสผ่าน (เหมือนเริ่มใหม่) */}
                         <button 
                             type="button"
                             onClick={() => {
                                 setPopup({
                                     type: 'warning',
-                                    title: 'รีเซ็ตรหัสผ่าน?',
+                                    title: 'รีเซ็ต/ลบรหัสผ่าน?',
                                     text: 'ระบบจะลบข้อมูลบัญชีอีเมลเดิมทิ้ง เพื่อให้คุณสามารถตั้งรหัสผ่านใหม่ได้ทันที ยืนยันหรือไม่?',
                                     onConfirm: () => {
                                         apiCall('deleteStudentAuth', form.id, form.firebaseUid)
@@ -1513,7 +1488,7 @@
                                     }
                                 });
                             }}
-                            className="text-[10px] bg-white border border-green-200 px-2 py-1 rounded-md text-green-600 font-bold hover:bg-green-100 transition"
+                            className="text-[10px] bg-white border border-green-200 px-2 py-1 rounded-md text-green-600 font-bold hover:bg-green-100 transition shadow-sm"
                         >
                             รีเซ็ต/ลบรหัส
                         </button>
@@ -1540,7 +1515,7 @@
                                     }
                                 });
                             }} className="px-3 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
-                                {isResetting ? <Icon name="spinner" className="animate-spin"/> : 'บันทึก'}
+                                {isResetting ? <Icon name="spinner" className="animate-spin" /> : 'บันทึก'}
                             </button>
                         </div>
                     </div>
@@ -1548,11 +1523,11 @@
             ) : (
                 /* --- กรณีที่ยังไม่มีรหัสใน Auth --- */
                 <div className="space-y-3">
-                    {/* ❌ แสดงช่องรหัสเก่าเฉพาะเมื่อมีข้อมูลใน Firestore เท่านั้น */}
+                    {/* ❌ โชว์รหัสเก่าเฉพาะเมื่อมีข้อมูลเท่านั้น ถ้าไม่มีจะหายไปเลย */}
                     {form.password && (
                         <div className="mb-2">
                             <label className="text-[10px] font-bold text-gray-400 mb-1 block uppercase">รหัสผ่านเดิม (ในระบบเก่า)</label>
-                            <input type="text" value={form.password} readOnly className="w-full px-4 py-2 bg-amber-50 border border-amber-100 text-amber-700 rounded-xl text-sm font-bold opacity-70" />
+                            <input type="text" value={form.password} readOnly className="w-full px-4 py-2 bg-gray-100 border border-gray-200 text-gray-500 rounded-xl text-sm font-bold" />
                         </div>
                     )}
                     
@@ -1566,7 +1541,7 @@
           
           {/* ✅ ส่วนลบ Account อันตราย (ลบถาวร) */}
           {initialData && form.hasPassword && (
-              <div className="mt-4">
+              <div className="mt-2">
                   <button 
                     type="button"
                     onClick={() => {
@@ -1591,34 +1566,34 @@
               </div>
           )}
 
-          <button onClick={handleSubmit} disabled={loading || !form.id || !form.name} className="w-full py-3 mt-2 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition flex justify-center shadow-lg shadow-blue-200">
+          <button onClick={handleSubmit} disabled={loading || !form.id || !form.name} className="w-full py-3 mt-4 bg-primary text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition flex justify-center shadow-lg shadow-blue-200">
             {loading ? <><Icon name="spinner" className="animate-spin mr-2" weight="bold"/> กำลังบันทึก...</> : (initialData ? "บันทึกการแก้ไข" : "เพิ่มนักศึกษา")}
           </button>
 
           {/* 🌟 ป๊อปอัปแจ้งเตือนสวยๆ (Custom Modal) 🌟 */}
           {popup && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in rounded-3xl">
-                  <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[300px] text-center transform animate-scale-in">
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+                  <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[320px] text-center transform animate-scale-in border border-gray-100">
                       {popup.type === 'success' && <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="check" size={32} weight="bold"/></div>}
                       {popup.type === 'error' && <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="x" size={32} weight="bold"/></div>}
                       {popup.type === 'warning' && <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="warning" size={32} weight="bold"/></div>}
                       {popup.type === 'danger' && <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="trash" size={32} weight="bold"/></div>}
                       
                       <h3 className="text-lg font-black text-gray-800 mb-2">{popup.title}</h3>
-                      <p className="text-xs text-gray-500 mb-6">{popup.text}</p>
+                      <p className="text-sm text-gray-500 mb-6 leading-relaxed">{popup.text}</p>
                       
                       {popup.onConfirm ? (
                           <div className="flex gap-2">
-                              <button type="button" onClick={() => setPopup(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">ยกเลิก</button>
-                              <button type="button" onClick={() => { popup.onConfirm(); setPopup(null); }} className={`flex-1 py-2.5 text-white font-bold rounded-xl shadow-md ${popup.type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>ยืนยัน</button>
+                              <button type="button" onClick={() => setPopup(null)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button>
+                              <button type="button" onClick={() => { popup.onConfirm(); setPopup(null); }} className={`flex-1 py-3 text-white font-bold rounded-xl shadow-md transition ${popup.type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>ยืนยัน</button>
                           </div>
                       ) : (
-                          <button type="button" onClick={() => setPopup(null)} className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700">ตกลง</button>
+                          <button type="button" onClick={() => setPopup(null)} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 transition">ตกลง</button>
                       )}
                   </div>
               </div>
           )}
-          
+
         </div>
       );
     };
