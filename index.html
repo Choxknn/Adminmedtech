@@ -578,24 +578,25 @@
                     return true;
                 }
 
-                // ✅ สั่งลบเฉพาะ User ฝั่ง LINE
-                case 'deleteStudentAuthLine': {
+                case 'deleteStudentAuth': {
                     const studentId = args[0];
-                    const firebaseUid = args[1]; // รับ UID ของ LINE มา
+                    const firebaseUid = args[1] || ''; // รับค่า firebaseUid
                     
-                    // 1. สั่ง GAS ลบ Auth
-                    await callGAS('deleteUserAuthLine', { firebaseUid });
+                    // 1. สั่ง GAS ไปลบ Auth (ทั้ง Line และ Email)
+                    await callGAS('deleteUserAuth', { 
+                        studentId: studentId, 
+                        firebaseUid: firebaseUid 
+                    });
                     
-                    // 2. ลบข้อมูล LINE ออกจาก Firestore ของนักศึกษา
+                    // 2. ลบสถานะรหัสผ่านใน Firestore เพื่อให้หน้าเว็บอัปเดต
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
-                        userId: firebase.firestore.FieldValue.delete(),
-                        firebaseUid: firebase.firestore.FieldValue.delete() 
+                        hasPassword: false, 
+                        password: firebase.firestore.FieldValue.delete() 
                     });
                     return true;
                 }
 
-                // ✅ สั่งเปลี่ยนรหัสผ่านใหม่
                 case 'updateStudentPassword': {
                     const studentId = args[0];
                     const newPassword = args[1];
