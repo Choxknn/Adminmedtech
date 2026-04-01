@@ -3071,15 +3071,27 @@
                                         {isLineLinked && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00B900]/10 text-[#00B900] text-[9px] font-bold border border-[#00B900]/20"><Icon name="chat-circle-dots" weight="fill" size={10}/> เชื่อม LINE</span>}
                                     </div>
 
-                                    {/* ✅ ส่วนปุ่ม Action ที่แก้ไขแล้ว */}
+                                    {/* ✅ ส่วนปุ่ม Action ที่ปรับสีใหม่ */}
                                     <div className="flex gap-2 mt-3 pt-3 border-t border-dashed border-gray-100 relative z-20">
                                         <button onClick={() => onViewBills(stu.id)} className="flex-1 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1 shadow-sm">
                                             <Icon name="receipt" weight="bold"/> ดูบิล
                                         </button>
-                                        <button onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} className="w-9 h-9 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition shadow-sm">
+
+                                        {/* ✏️ ปุ่มแก้ไข ปรับสีส้ม/เหลือง ให้เด่นขึ้น */}
+                                        <button 
+                                            onClick={() => { setSelectedStudent(stu); setIsStudentModalOpen(true); }} 
+                                            className="w-9 h-9 flex items-center justify-center bg-amber-100 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-200 transition shadow-sm"
+                                            title="แก้ไขข้อมูลผู้ใช้"
+                                        >
                                             <Icon name="pencil-simple" weight="bold" size={16}/>
                                         </button>
-                                        <button onClick={() => onDeleteStudent(stu)} className="w-9 h-9 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-500 transition shadow-sm" title="ลบผู้ใช้ถาวร">
+
+                                        {/* 🗑️ ปุ่มลบ */}
+                                        <button 
+                                            onClick={() => onDeleteStudent(stu)} 
+                                            className="w-9 h-9 flex items-center justify-center bg-white text-red-400 border border-red-100 rounded-lg hover:bg-red-50 hover:text-red-600 transition shadow-sm" 
+                                            title="ลบผู้ใช้ถาวร"
+                                        >
                                             <Icon name="trash" weight="bold" size={16}/>
                                         </button>
                                     </div>
@@ -5292,7 +5304,13 @@
 
           <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="สร้างบิลใหม่"><BillForm students={data.students} onSubmit={handleCreateBill} loading={processingAction === 'CREATE_BILL'} /></Modal>
           <Modal isOpen={isStudentModalOpen} onClose={() => setIsStudentModalOpen(false)} title={selectedStudent ? "แก้ไขนักศึกษา" : "เพิ่มนักศึกษา"}><StudentForm onSubmit={handleSaveStudent} loading={processingAction === 'SAVE_STUDENT'} initialData={selectedStudent} /></Modal>
-          <StudentBillsModal isOpen={!!viewingStudentId} onClose={() => setViewingStudentId(null)} student={data.students?.find(s => s.id === viewingStudentId)} bills={data.bills?.filter(b => b.studentId === viewingStudentId)} onSelectBill={(bill) => setSelectedBill(bill)} />
+         <StudentBillsModal 
+              isOpen={!!viewingStudentId} 
+              onClose={() => setViewingStudentId(null)} 
+              student={data.students?.find(s => String(s.id) === String(viewingStudentId))} 
+              bills={data.bills?.filter(b => String(b.studentId) === String(viewingStudentId))} 
+              onSelectBill={(bill) => setSelectedBill(bill)} 
+          />
           <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={getDirectImageUrl(viewingSlipUrl)} />
