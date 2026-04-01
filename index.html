@@ -996,15 +996,20 @@
       const [isOpen, setIsOpen] = useState(false);
       const [studentSearch, setStudentSearch] = useState(''); // ✅ เพิ่ม state ค้นหา
 
-      // ✅ กรองรายชื่อตามที่พิมพ์ค้นหา
+      // ✅ กรองรายชื่อตามที่พิมพ์ค้นหา (อัปเดตใหม่ แก้จอขาว)
       const filteredStudents = useMemo(() => {
-            // ✅ เพิ่มเงื่อนไขกรอง: ถ้าไม่มีรหัสผ่านใน Firestore ไม่ต้องโชว์
-            let list = data.students.filter(s => s.password && String(s.password).trim() !== '');
-            
-            if (!searchTerm) return list;
-            const lower = searchTerm.toLowerCase();
-            return list.filter(s => String(s.id).toLowerCase().includes(lower) || String(s.name).toLowerCase().includes(lower));
-        }, [data.students, searchTerm]);
+          // 1. ใช้ students ที่รับมาจาก Props แทน data.students
+          let list = students || []; 
+          
+          // 2. ใช้ studentSearch แทน searchTerm
+          if (!studentSearch) return list;
+          const lower = studentSearch.toLowerCase();
+          
+          return list.filter(s => 
+              String(s.id).toLowerCase().includes(lower) || 
+              String(s.name).toLowerCase().includes(lower)
+          );
+      }, [students, studentSearch]); // 3. อัปเดต Dependency ให้ตรงกับตัวแปรที่ใช้
 
       // สลับการเลือกทีละคน
       const toggleStudent = (id) => {
