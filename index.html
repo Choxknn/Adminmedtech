@@ -526,15 +526,16 @@
                     await user.updatePassword(newPassword);
                     return "Password Updated";
                 }
-                // ✅ สั่งลบ User ออกจาก Auth และลบสถานะใน Firestore
+                
                 case 'deleteStudentAuth': {
                     const studentId = args[0];
-                    const lineUserId = args[1] || '';
+                    const firebaseUid = args[1] || ''; // รับค่าจากฟิลด์ firebaseUid
                     
-                    // 1. สั่ง GAS ลบ Auth
-                    await callGAS('deleteUserAuth', { studentId, userId: lineUserId });
+                    await callGAS('deleteUserAuth', { 
+                        studentId: studentId, 
+                        firebaseUid: firebaseUid 
+                    });
                     
-                    // 2. ลบสถานะรหัสผ่านใน Firestore (ลบจริงๆ)
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
                         hasPassword: false, 
@@ -542,7 +543,6 @@
                     });
                     return true;
                 }
-
                 // ✅ สั่งเปลี่ยนรหัสผ่านใหม่
                 case 'updateStudentPassword': {
                     const studentId = args[0];
@@ -1483,87 +1483,110 @@
             )}
           </div>
 
-          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ฉลาด) */}
+          {/* ✅ ส่วนจัดการรหัสผ่าน (UI ปรับปรุงใหม่) */}
           <div className="relative border-t border-gray-100 pt-4 mt-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">บัญชีเข้าระบบ (Firebase Auth)</label>
             
             {form.hasPassword ? (
-                // กรณีมีรหัสผ่านแล้ว (สร้าง Auth แล้ว)
+                /* --- กรณีเปิดใช้งาน Auth แล้ว (กล่องเขียว) --- */
                 <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                    <div className="flex items-center gap-2 text-green-700 font-bold text-sm mb-3">
-                        <Icon name="check-circle" weight="fill" size={20}/>
-                        บัญชีถูกสร้างและเปิดใช้งานแล้ว
+                    <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2 text-green-700 font-bold text-sm">
+                            <Icon name="check-circle" weight="fill" size={20}/>
+                            บัญชีถูกสร้างแล้ว
+                        </div>
+                        {/* 🔄 ปุ่มรีเซ็ต/ลบรหัสผ่าน (เหมือนเริ่มใหม่) */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setPopup({
+                                    type: 'warning',
+                                    title: 'รีเซ็ตรหัสผ่าน?',
+                                    text: 'ระบบจะลบข้อมูลบัญชีอีเมลเดิมทิ้ง เพื่อให้คุณสามารถตั้งรหัสผ่านใหม่ได้ทันที ยืนยันหรือไม่?',
+                                    onConfirm: () => {
+                                        apiCall('deleteStudentAuth', form.id, form.firebaseUid)
+                                            .then(() => {
+                                                setForm({...form, hasPassword: false, password: ''});
+                                                setPopup({ type: 'success', title: 'รีเซ็ตสำเร็จ', text: 'คุณสามารถตั้งรหัสผ่านใหม่ให้นักศึกษาได้แล้ว' });
+                                            })
+                                            .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
+                                    }
+                                });
+                            }}
+                            className="text-[10px] bg-white border border-green-200 px-2 py-1 rounded-md text-green-600 font-bold hover:bg-green-100 transition"
+                        >
+                            รีเซ็ต/ลบรหัส
+                        </button>
                     </div>
                     
-                    <div className="space-y-2 mt-3 p-3 bg-white rounded-lg border border-gray-200">
-                        <label className="text-xs font-bold text-gray-500">เปลี่ยนรหัสผ่านใหม่ให้นักศึกษา</label>
+                    <div className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">เปลี่ยนรหัสผ่านใหม่</label>
                         <div className="flex gap-2">
-                            <input 
-                                type="text" 
-                                placeholder="พิมพ์รหัสผ่านใหม่..." 
-                                value={newPassInput} 
-                                onChange={(e) => setNewPassInput(e.target.value)}
-                                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                            />
-                            <button 
-                                type="button"
-                                disabled={!newPassInput || isResetting}
-                                onClick={() => {
-                                    setPopup({
-                                        type: 'warning',
-                                        title: 'ยืนยันการเปลี่ยนรหัส',
-                                        text: `คุณต้องการเปลี่ยนรหัสผ่านเป็น "${newPassInput}" ใช่หรือไม่?`,
-                                        onConfirm: () => {
-                                            setIsResetting(true);
-                                            apiCall('updateStudentPassword', form.id, newPassInput)
-                                                .then(() => {
-                                                    setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านในระบบ Auth เรียบร้อยแล้ว' });
-                                                    setNewPassInput('');
-                                                })
-                                                .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }))
-                                                .finally(() => setIsResetting(false));
-                                        }
-                                    });
-                                }}
-                                className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
-                            >
-                                {isResetting ? 'กำลังเปลี่ยน...' : 'บันทึกรหัสใหม่'}
+                            <input type="text" placeholder="พิมพ์รหัสใหม่..." value={newPassInput} onChange={(e) => setNewPassInput(e.target.value)} className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" />
+                            <button type="button" disabled={!newPassInput || isResetting} onClick={() => {
+                                setPopup({
+                                    type: 'warning',
+                                    title: 'ยืนยันการเปลี่ยนรหัส',
+                                    text: `เปลี่ยนรหัสเป็น "${newPassInput}" ?`,
+                                    onConfirm: () => {
+                                        setIsResetting(true);
+                                        apiCall('updateStudentPassword', form.id, newPassInput)
+                                            .then(() => {
+                                                setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' });
+                                                setNewPassInput('');
+                                            })
+                                            .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }))
+                                            .finally(() => setIsResetting(false));
+                                    }
+                                });
+                            }} className="px-3 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+                                {isResetting ? <Icon name="spinner" className="animate-spin"/> : 'บันทึก'}
                             </button>
                         </div>
                     </div>
                 </div>
             ) : (
-                // กรณีที่ยังไม่มีรหัส (สร้างใหม่)
-                <input type="text" name="password" value={form.password} onChange={handleChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition" placeholder="ตั้งรหัสผ่านเริ่มต้น (ถ้าเว้นว่าง = ยังไม่เปิดใช้)"/>
+                /* --- กรณีที่ยังไม่มีรหัสใน Auth --- */
+                <div className="space-y-3">
+                    {/* ❌ แสดงช่องรหัสเก่าเฉพาะเมื่อมีข้อมูลใน Firestore เท่านั้น */}
+                    {form.password && (
+                        <div className="mb-2">
+                            <label className="text-[10px] font-bold text-gray-400 mb-1 block uppercase">รหัสผ่านเดิม (ในระบบเก่า)</label>
+                            <input type="text" value={form.password} readOnly className="w-full px-4 py-2 bg-amber-50 border border-amber-100 text-amber-700 rounded-xl text-sm font-bold opacity-70" />
+                        </div>
+                    )}
+                    
+                    <div className="relative">
+                        <label className="text-[10px] font-bold text-gray-400 mb-1 block uppercase">ตั้งรหัสผ่านใหม่ (เพื่อเปิดใช้ Auth)</label>
+                        <input type="text" name="password" value={form.password || ''} onChange={handleChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary outline-none transition" placeholder="ระบุรหัสผ่านเพื่อสร้างบัญชี..."/>
+                    </div>
+                </div>
             )}
           </div>
           
-          {/* ✅ ส่วนจัดการลบบัญชีอันตราย */}
+          {/* ✅ ส่วนลบ Account อันตราย (ลบถาวร) */}
           {initialData && form.hasPassword && (
-              <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-4">
-                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1 mb-2">
-                      <Icon name="shield-warning" weight="fill"/> อันตราย: จัดการบัญชีระบบ
-                  </p>
+              <div className="mt-4">
                   <button 
                     type="button"
                     onClick={() => {
                         setPopup({
                             type: 'danger',
-                            title: 'ลบบัญชีออกจากระบบ?',
-                            text: 'การทำเช่นนี้จะลบการเชื่อมต่อ Auth ทุกช่องทาง (ทั้งรหัสผ่าน และ LINE) นักศึกษาจะต้องลงทะเบียนใหม่ ยืนยันหรือไม่?',
+                            title: 'ลบ Account ถาวร?',
+                            text: 'นักศึกษาจะเข้าสู่ระบบไม่ได้ทั้งทางรหัสและ LINE ยืนยันลบบัญชีของนักศึกษาคนนี้ออกจากระบบ Auth หรือไม่?',
                             onConfirm: () => {
-                                apiCall('deleteStudentAuth', form.id, form.userId) 
+                                apiCall('deleteStudentAuth', form.id, form.firebaseUid) 
                                     .then(() => {
-                                        setForm({...form, hasPassword: false, password: ''}); // อัปเดตหน้าจอทันที
-                                        setPopup({ type: 'success', title: 'สำเร็จ', text: 'ลบ Account ออกจากระบบเรียบร้อยแล้ว' });
+                                        setForm({...form, hasPassword: false, password: ''});
+                                        setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบบัญชีออกจากระบบเรียบร้อย' });
                                     })
                                     .catch(err => setPopup({ type: 'error', title: 'ผิดพลาด', text: err.message }));
                             }
                         });
                     }} 
-                    className="w-full py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-md shadow-red-100 hover:bg-red-700 transition"
+                    className="w-full py-2 text-red-500 rounded-xl text-[10px] font-bold border border-red-100 hover:bg-red-50 transition"
                   >
-                    ลบ Account (Auth) ออกจากระบบ
+                    <Icon name="trash" className="inline mr-1"/> ลบบัญชีออกจาก Authentication
                   </button>
               </div>
           )}
