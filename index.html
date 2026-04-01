@@ -529,12 +529,11 @@
                 // ✅ สั่งลบ User ในระบบ Firebase Auth
                 case 'deleteStudentAuth': {
                     const studentId = args[0];
-                    // ค้นหาข้อมูลนักศึกษาจาก State เพื่อเอาค่า userId (LINE) ไปลบด้วย
-                    const studentData = data.students.find(s => s.id === studentId) || {};
+                    const lineUserId = args[1] || ''; // รับค่า userId มาจากปุ่มกดโดยตรง
                     
                     return await callGAS('deleteUserAuth', { 
                         studentId: studentId, 
-                        userId: studentData.userId || '' 
+                        userId: lineUserId 
                     });
                 }
 
@@ -1481,7 +1480,7 @@
                       <button 
                         type="button"
                         onClick={() => { if(confirm('⚠️ คำเตือน: คุณต้องการลบบัญชีออกจากระบบ Authentication หรือไม่? นักศึกษาจะต้องสมัครใหม่เท่านั้น ยืนยัน?')) { 
-                            apiCall('deleteStudentAuth', form.id) // ต้องเพิ่ม case นี้ใน apiCall ด้วย
+                            apiCall('deleteStudentAuth', form.id, form.userId) // ต้องเพิ่ม case นี้ใน apiCall ด้วย
                                 .then(() => alert('ลบ Account สำเร็จ'))
                                 .catch(err => alert('Error: ' + err.message));
                         }}} 
