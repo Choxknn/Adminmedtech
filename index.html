@@ -124,31 +124,23 @@
     // ==========================================
     const apiCall = async (action, currentAdmin, ...args) => {
         try {
-          // ✅ ใช้ effectiveCohort (ชั้นปีที่กำลังเลือกดูอยู่) แทนการเช็ค Role ตรงๆ
+            // ✅ ใช้ effectiveCohort (ชั้นปีที่กำลังเลือกดูอยู่) แทนการเช็ค Role ตรงๆ
             const getCohortSuffix = (admin) => admin?.effectiveCohort || 'ALL';
-          
-            // ฟังก์ชันช่วยเช็คชั้นปี (ดูจาก 2 ตัวหน้าของรหัส)
+
             const isStudentInCohort = (studentId, adminCohort) => {
-                if (!adminCohort || adminCohort === 'ALL' || currentAdmin?.role === 'superadmin') return true;
+                if (!adminCohort || adminCohort === 'ALL') return true;
                 const stuCohort = String(studentId).substring(0, 2);
                 return stuCohort === String(adminCohort);
             };
 
-            // ✅ ฟังก์ชันช่วยเช็ค Document ทั่วไปว่าอยู่ในชั้นปีของแอดมินไหม
             const isDocInCohort = (docData, adminCohort) => {
-                if (!adminCohort || adminCohort === 'ALL' || currentAdmin?.role === 'superadmin') return true;
-                // ถ้ามีฟิลด์ cohort ใน Document ให้เช็คตรงๆ
+                if (!adminCohort || adminCohort === 'ALL') return true;
                 if (docData.cohort) return String(docData.cohort) === String(adminCohort);
-                return true; // ถ้าไม่มี ถือว่าเป็นของส่วนกลาง (ให้เห็นได้)
-            };
-
-            // ฟังก์ชันช่วยหา Suffix ของชั้นปี (ถ้าเป็น Super Admin จะได้ค่า 'ALL')
-            const getCohortSuffix = (admin) => {
-                return (admin && admin.role !== 'superadmin' && admin.cohort) ? admin.cohort : 'ALL';
+                return true; 
             };
 
             switch(action) {
-                // 📊 ดึงข้อมูลหลัก (Dashboard)
+                // 📊 ดึงข้อมูลหลัก (Dashboard).
                 case 'getAllData': {
                     const data = { students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, announcement: '', systemStatus: 'OFF' };
                     
