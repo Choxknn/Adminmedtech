@@ -5211,13 +5211,6 @@
         }
     };
       
-      // ✅ เพิ่มฟังก์ชันรับค่าจาก Modal แล้วไปบอก apiCall
-      const handleEditHistoryData = (formData) => { 
-          setProcessingAction('EDIT_HISTORY'); 
-          apiCall('editHistory', formData).then(newData => { 
-              setData(newData); setEditingHistory(null); finishAction(); 
-          }).catch(err => { alert(err.message); setProcessingAction(null); }); 
-      };
 
       const fetchData = (showSpinner = false) => { 
         if (isFetchingRef.current) return; 
@@ -5247,18 +5240,25 @@
           }
       }
 
+      // ✅ เพิ่มฟังก์ชันรับค่าจาก Modal แล้วไปบอก apiCall
+      const handleEditHistoryData = (formData) => { 
+          setProcessingAction('EDIT_HISTORY'); 
+          apiCall('editHistory', currentAdmin, formData).then(newData => { 
+              setData(newData); setEditingHistory(null); finishAction(); 
+          }).catch(err => { alert(err.message); setProcessingAction(null); }); 
+      };
+
       // Actions ...
-      const handleSaveFinance = (formData) => { setProcessingAction('SAVE_FINANCE'); apiCall('saveFinanceLog', formData).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
-      const handleDeleteFinance = (id) => { setProcessingAction('DELETE'); apiCall('deleteFinanceLog', id).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
-      const handleToggleOrderSystem = (status) => { setProcessingAction('TOGGLE_SYSTEM'); setOrderData(prev => ({ ...prev, systemStatus: status ? 'ON' : 'OFF' })); setTimeout(() => { apiCall('toggleOrderSystem', status).then(() => finishAction()).catch(() => { setOrderData(prev => ({ ...prev, systemStatus: status ? 'OFF' : 'ON' })); alert("บันทึกไม่สำเร็จ"); }); }, 500); };
-      const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
-      const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
-      const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
+      const handleSaveFinance = (formData) => { setProcessingAction('SAVE_FINANCE'); apiCall('saveFinanceLog', currentAdmin, formData).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleDeleteFinance = (id) => { setProcessingAction('DELETE'); apiCall('deleteFinanceLog', currentAdmin, id).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleToggleOrderSystem = (status) => { setProcessingAction('TOGGLE_SYSTEM'); setOrderData(prev => ({ ...prev, systemStatus: status ? 'ON' : 'OFF' })); setTimeout(() => { apiCall('toggleOrderSystem', currentAdmin, status).then(() => finishAction()).catch(() => { setOrderData(prev => ({ ...prev, systemStatus: status ? 'OFF' : 'ON' })); alert("บันทึกไม่สำเร็จ"); }); }, 500); };
+      const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', currentAdmin, form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
+      const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', currentAdmin, id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
+      const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', currentAdmin, formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
 
       // ✅ 1. ฟังก์ชันบันทึกแอดมิน
       const handleSaveAdmin = (formData) => {
           setProcessingAction('SAVE_ADMIN');
-          // เรียก apiCall ที่เราสร้างไว้ตอนแรก
           apiCall('saveAdmin', currentAdmin, formData)
               .then((newAdminList) => {
                   setAdminList(newAdminList); // อัปเดตรายชื่อในหน้าจอทันที
@@ -5272,7 +5272,6 @@
       };
 
       // ✅ 2. ฟังก์ชันเตือนและลบแอดมิน
-      // เพิ่มลงไปรวมกับพวก handleDeleteProductClick
       const handleDeleteAdminClick = (email) => { 
           setDeleteTarget({ type: 'ADMIN', id: email }); 
           setIsDeleteConfirmOpen(true); 
@@ -5291,7 +5290,7 @@
           else if (targetType === 'STUDENT') setData(prev => ({ ...prev, students: prev.students.filter(s => s.id !== targetId) }));
           else if (targetType === 'QR') setData(prev => ({ ...prev, amount: { ...prev.amount, qrCodes: prev.amount.qrCodes.filter(q => q.url !== targetId) } }));
           else if (targetType === 'ANNOUNCEMENT') { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); }
-          else if (targetType === 'ADMIN') setAdminList(prev => prev.filter(a => a.email !== targetId)); // ✅ เพิ่มเคสอัปเดตจอทันที
+          else if (targetType === 'ADMIN') setAdminList(prev => prev.filter(a => a.email !== targetId)); 
           
           setTimeout(() => {
               const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
@@ -5304,7 +5303,7 @@
               else if (targetType === 'PRODUCT') apiCall('deleteProduct', currentAdmin, targetId).then(onSuccess).catch(onError);
               else if (targetType === 'ORDER') apiCall('deleteOrder', currentAdmin, targetId).then(onSuccess).catch(onError);
               else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', currentAdmin, { type: 'text', text: '' }).then(onSuccess).catch(onError);
-              else if (targetType === 'ADMIN') apiCall('deleteAdmin', currentAdmin, targetId).then(list => { setAdminList(list); onSuccess(); }).catch(onError); // ✅ สั่งลบจริง
+              else if (targetType === 'ADMIN') apiCall('deleteAdmin', currentAdmin, targetId).then(list => { setAdminList(list); onSuccess(); }).catch(onError); 
 
               setDeleteTarget(null);
           }, 500);
@@ -5317,25 +5316,35 @@
               formData.studentIds.forEach(studentId => {
                   const singleBillData = { ...formData, studentId: studentId };
                   delete singleBillData.studentIds; 
-                  apiCall('createBill', singleBillData).then(() => { completed++; if (completed === total) { fetchData(false); setIsCreateModalOpen(false); finishAction(); } }).catch((err) => { completed++; if (completed === total) { alert("บางรายการอาจไม่สำเร็จ กรุณาตรวจสอบ"); setProcessingAction(null); } });
+                  apiCall('createBill', currentAdmin, singleBillData).then(() => { completed++; if (completed === total) { fetchData(false); setIsCreateModalOpen(false); finishAction(); } }).catch((err) => { completed++; if (completed === total) { alert("บางรายการอาจไม่สำเร็จ กรุณาตรวจสอบ"); setProcessingAction(null); } });
               });
           } else {
-              apiCall('createBill', formData).then((newData) => { setData(newData); setIsCreateModalOpen(false); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); 
+              apiCall('createBill', currentAdmin, formData).then((newData) => { setData(newData); setIsCreateModalOpen(false); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); 
           }
       };
 
-      const handleEditBill = (formData) => { setProcessingAction('EDITING'); apiCall('editBill', formData).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); };
-      const handleSaveAnnouncement = () => { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); };
-      const handleDeleteAnnouncement = () => { if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', { type: 'text', text: '' }).then((resText) => { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); } };
-      const handleSaveStudent = (formData) => { setProcessingAction('SAVE_STUDENT'); const onSuccess = (newData) => { setData(newData); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); }; const onError = (err) => { setErrorMessage(err.message || String(err).replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); }; if (selectedStudent) { apiCall('editStudent', formData).then(onSuccess).catch(onError); } else { apiCall('createStudent', formData).then(onSuccess).catch(onError); } };
-      const handleQrUploadSuccess = (newData) => { setData(prev => ({...prev, amount: newData})); setIsQrModalOpen(false); setEditingQrData(null); finishAction(); };
-      const handleSendCustomNotification = (form) => { setProcessingAction('NOTIFY'); apiCall('sendCustomNotification', form).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleSendOverdueNotification = (billId) => { setProcessingAction('NOTIFY'); apiCall('sendOverdueNotification', billId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleSendAccountNotification = (studentId) => { setProcessingAction('NOTIFY'); apiCall('sendAccountNotification', studentId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อมูลไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-     const handleSendOverdueBatchNotification = (targets) => { setProcessingAction('NOTIFY'); apiCall('sendBatchLineNotify', { targets }).then(() => { finishAction(); }).catch((err) => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleResetBill = () => { setIsResetConfirmOpen(false); if (!selectedBill) return; setProcessingAction('RESET'); apiCall('resetBill', selectedBill.billId).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch((err) => { alert("Error: " + err.message); setProcessingAction(null); }); };
-      const handleUpdateBill = (status) => { if(!selectedBill) return; let actionType = 'LOADING'; if (status === 'ชำระแล้ว') actionType = 'APPROVE'; if (status === '') actionType = 'REJECT'; if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; setProcessingAction(actionType); apiCall('updateBillStatus', selectedBill.billId, status, selectedBill.studentId, notifyEnabled).then((newData) => { setSelectedBill(null); setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleEditBill = (formData) => { setProcessingAction('EDITING'); apiCall('editBill', currentAdmin, formData).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); };
+      const handleSaveAnnouncement = () => { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', currentAdmin, announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); };
+      const handleDeleteAnnouncement = () => { if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', currentAdmin, { type: 'text', text: '' }).then((resText) => { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); } };
       
+      const handleSaveStudent = (formData) => { 
+          setProcessingAction('SAVE_STUDENT'); 
+          const onSuccess = (newData) => { setData(newData); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); }; 
+          const onError = (err) => { setErrorMessage(err.message || String(err).replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); }; 
+          if (selectedStudent) { 
+              apiCall('editStudent', currentAdmin, formData).then(onSuccess).catch(onError); 
+          } else { 
+              apiCall('createStudent', currentAdmin, formData).then(onSuccess).catch(onError); 
+          } 
+      };
+
+      const handleQrUploadSuccess = (newData) => { setData(prev => ({...prev, amount: newData})); setIsQrModalOpen(false); setEditingQrData(null); finishAction(); };
+      const handleSendCustomNotification = (form) => { setProcessingAction('NOTIFY'); apiCall('sendCustomNotification', currentAdmin, form).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleSendOverdueNotification = (billId) => { setProcessingAction('NOTIFY'); apiCall('sendOverdueNotification', currentAdmin, billId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleSendAccountNotification = (studentId) => { setProcessingAction('NOTIFY'); apiCall('sendAccountNotification', currentAdmin, studentId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อมูลไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleSendOverdueBatchNotification = (targets) => { setProcessingAction('NOTIFY'); apiCall('sendBatchLineNotify', currentAdmin, { targets }).then(() => { finishAction(); }).catch((err) => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleResetBill = () => { setIsResetConfirmOpen(false); if (!selectedBill) return; setProcessingAction('RESET'); apiCall('resetBill', currentAdmin, selectedBill.billId).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch((err) => { alert("Error: " + err.message); setProcessingAction(null); }); };
+      const handleUpdateBill = (status) => { if(!selectedBill) return; let actionType = 'LOADING'; if (status === 'ชำระแล้ว') actionType = 'APPROVE'; if (status === '') actionType = 'REJECT'; if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; setProcessingAction(actionType); apiCall('updateBillStatus', currentAdmin, selectedBill.billId, status, selectedBill.studentId, notifyEnabled).then((newData) => { setSelectedBill(null); setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
       const handleDeleteProductClick = (id) => { setDeleteTarget({ type: 'PRODUCT', id: id }); setIsDeleteConfirmOpen(true); };
       const handleDeleteOrderClick = (id) => { setDeleteTarget({ type: 'ORDER', id: id }); setIsDeleteConfirmOpen(true); };
       const handleDeleteClick = () => { if(!selectedBill) return; setDeleteTarget({ type: 'BILL', id: selectedBill.billId }); setIsDeleteConfirmOpen(true); };
