@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Admin Medtech System</title>
+  <title>Admin Medtech67 System</title>
   <link rel="icon" type="image/png" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
     <link rel="apple-touch-icon" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
   
@@ -119,93 +119,51 @@
         }
     };
 
-   // ==========================================
-    // 🔄 THE ADAPTER: อัปเดตกรองข้อมูลตาม Dropdown ของ Super Admin
     // ==========================================
-    const apiCall = async (action, currentAdmin, ...args) => {
+    // 🔄 THE ADAPTER: เปลี่ยน apiCall ให้วิ่งเข้า Firestore แทน
+    // ==========================================
+    const apiCall = async (action, ...args) => {
         try {
-            // ✅ ดึงชั้นปีที่กำลังเลือกดูอยู่ (ถ้าเป็น Super Admin จะมาจาก Dropdown, ถ้าปกติมาจากสิทธิ์)
-            const activeCohort = currentAdmin?.effectiveCohort || currentAdmin?.cohort || 'ALL';
-
-            // ✅ ฟังก์ชันเช็คชั้นปี (ยึดตาม activeCohort เป็นหลัก ตัดการเช็ค role ออก)
-            const isStudentInCohort = (studentId) => {
-                if (activeCohort === 'ALL') return true;
-                const stuCohort = String(studentId).substring(0, 2);
-                return stuCohort === String(activeCohort);
-            };
-
-            const isDocInCohort = (docData) => {
-                if (activeCohort === 'ALL') return true;
-                if (docData.cohort) return String(docData.cohort) === String(activeCohort);
-                return true; 
-            };
-
             switch(action) {
                 // 📊 ดึงข้อมูลหลัก (Dashboard)
                 case 'getAllData': {
                     const data = { students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, announcement: '', systemStatus: 'OFF' };
                     
                     const usersSnap = await db.collection('users').get();
-                    usersSnap.forEach(doc => {
-                        // ✅ เช็คแค่ว่ารหัสนักศึกษา ตรงกับปีที่เลือกดูอยู่ไหม
-                        if (isStudentInCohort(doc.id)) {
-                            data.students.push({ id: doc.id, ...doc.data() });
-                        }
-                    });
-
-                    const allowedStudentIds = data.students.map(s => s.id);
+                    usersSnap.forEach(doc => data.students.push({ id: doc.id, ...doc.data() }));
 
                     const billsSnap = await db.collectionGroup('bills').get();
                     billsSnap.forEach(doc => {
                         const b = doc.data(); 
-                        if (allowedStudentIds.includes(String(b.studentId))) {
-                            data.bills.push(b);
-                            if (!b.status || b.status === 'ค้างชำระ' || b.status === '') { 
-                                data.amount.totalUnpaid += (Number(b.amount || 0) - Number(b.discount || 0)); 
-                                data.amount.unpaidCount++; 
-                            }
+                        data.bills.push(b);
+                        if (!b.status || b.status === 'ค้างชำระ' || b.status === '') { 
+                            data.amount.totalUnpaid += (Number(b.amount || 0) - Number(b.discount || 0)); 
+                            data.amount.unpaidCount++; 
                         }
                     });
+                  
 
                     const histSnap = await db.collectionGroup('history').get();
                     histSnap.forEach(doc => { 
                         const h = doc.data(); 
-                        if (allowedStudentIds.includes(String(h.studentId))) {
-                            data.history.push(h); 
-                            data.amount.totalBalance += Number(h.total || 0); 
-                        }
+                        data.history.push(h); 
+                        data.amount.totalBalance += Number(h.total || 0); 
                     });
 
                     const finSnap = await db.collection('finance').doc('summary').collection('logs').get();
-                    finSnap.forEach(doc => {
-                        const finData = doc.data();
-                        if (isDocInCohort(finData)) {
-                            data.finance.push({ id: doc.id, ...finData });
-                        }
-                    });
+                    finSnap.forEach(doc => data.finance.push({ id: doc.id, ...doc.data() }));
 
                     const sysSnap = await db.collection('config').doc('system').get();
                     if(sysSnap.exists) { 
-                        const sysData = sysSnap.data();
-                        const suffix = activeCohort;
-                        
-                        data.systemStatus = sysData[`maintenance_${suffix}`] || sysData.maintenance || 'OFF'; 
-                        data.announcement = sysData[`announcement_${suffix}`] || sysData.announcement || ''; 
-                        data.config = { maintenanceMsg: sysData[`maintenanceMsg_${suffix}`] || sysData.maintenanceMsg || '' };
+                        data.systemStatus = sysSnap.data().maintenance || 'OFF'; 
+                        data.announcement = sysSnap.data().announcement || ''; 
+                        data.config = { maintenanceMsg: sysSnap.data().maintenanceMsg || '' };
                     }
 
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
-                    const qrSnap = await db.collection('config').doc(qrDocName).get();
+                    const qrSnap = await db.collection('config').doc('qrMap').get();
                     if(qrSnap.exists && qrSnap.data().codes) { 
                         data.amount.qrCodes = qrSnap.data().codes; 
                         if(data.amount.qrCodes.length > 0) data.amount.qrUrl = data.amount.qrCodes[data.amount.qrCodes.length-1].url; 
-                    } else if (activeCohort !== 'ALL') {
-                        // ดึงของส่วนกลางมาโชว์ถ้าระดับชั้นพึ่งสร้างใหม่และยังไม่มี QR
-                        const oldQrSnap = await db.collection('config').doc('qrMap').get();
-                        if(oldQrSnap.exists && oldQrSnap.data().codes) {
-                            data.amount.qrCodes = oldQrSnap.data().codes;
-                            if(data.amount.qrCodes.length > 0) data.amount.qrUrl = data.amount.qrCodes[data.amount.qrCodes.length-1].url;
-                        }
                     }
                     return data;
                 }
@@ -214,41 +172,24 @@
                 case 'getOrderData': {
                     const orderData = { systemStatus: 'OFF', products: [], orders: [] };
                     const sysSnap = await db.collection('config').doc('system').get();
-                    if(sysSnap.exists) {
-                        const sysData = sysSnap.data();
-                        orderData.systemStatus = sysData[`orderSystem_${activeCohort}`] || sysData.orderSystem || 'OFF';
-                    }
+                    if(sysSnap.exists) orderData.systemStatus = sysSnap.data().orderSystem || 'OFF';
 
                     const prodSnap = await db.collection('products').get();
-                    prodSnap.forEach(doc => {
-                        const pData = doc.data();
-                        if (isDocInCohort(pData)) {
-                            orderData.products.push({ id: doc.id, ...pData });
-                        }
-                    });
+                    prodSnap.forEach(doc => orderData.products.push({ id: doc.id, ...doc.data() }));
 
                     const ordersSnap = await db.collectionGroup('orders').get();
-                    ordersSnap.forEach(doc => {
-                        const oData = doc.data();
-                        if (isStudentInCohort(oData.studentId)) {
-                            orderData.orders.push(oData);
-                        }
-                    });
+                    ordersSnap.forEach(doc => orderData.orders.push(doc.data()));
                     return orderData;
                 }
 
                 // ⚙️ ตั้งค่าระบบ
                 case 'toggleMaintenance': { 
-                    await db.collection('config').doc('system').set({ [`maintenance_${activeCohort}`]: args[0] }, { merge: true }); 
-                    return await apiCall('getAllData', currentAdmin); 
-                }
-                case 'saveMaintenanceMsg': { 
-                    await db.collection('config').doc('system').set({ [`maintenanceMsg_${activeCohort}`]: args[0] }, { merge: true }); 
-                    return await apiCall('getAllData', currentAdmin); 
+                    await db.collection('config').doc('system').set({ maintenance: args[0] }, { merge: true }); 
+                    return await apiCall('getAllData'); 
                 }
                 case 'toggleOrderSystem': { 
-                    await db.collection('config').doc('system').set({ [`orderSystem_${activeCohort}`]: args[0] ? 'ON' : 'OFF' }, { merge: true }); 
-                    return await apiCall('getOrderData', currentAdmin); 
+                    await db.collection('config').doc('system').set({ orderSystem: args[0] ? 'ON' : 'OFF' }, { merge: true }); 
+                    return await apiCall('getOrderData'); 
                 }
                 case 'updateAnnouncementData': {
                     const payload = args[0]; 
@@ -260,46 +201,8 @@
                     } else if (payload.type === 'image') {
                         finalValue = '';
                     }
-                    await db.collection('config').doc('system').set({ [`announcement_${activeCohort}`]: finalValue }, { merge: true });
+                    await db.collection('config').doc('system').set({ announcement: finalValue }, { merge: true });
                     return finalValue;
-                }
-                
-                // 🛡️ จัดการ Admin
-                case 'getAdmins': {
-                    const admins = [];
-                    const snap = await db.collection('admins').get();
-                    snap.forEach(doc => admins.push({ email: doc.id, ...doc.data() }));
-                    return admins;
-                }
-                case 'saveAdmin': {
-                    const form = args[0];
-                    const adminRef = db.collection('admins').doc(form.email);
-                    const adminSnap = await adminRef.get();
-
-                    // ✅ ถ้ายังไม่มีในตาราง admins (คือการสร้างใหม่) ให้ไปสร้างบัญชี Auth
-                    if (!adminSnap.exists) {
-                        try {
-                            await callGAS('saveAdminAuth', { email: form.email, password: form.password });
-                        } catch (err) {
-                            // ถ้าพยายามสร้างแล้วบอกว่ามีอีเมลนี้ในระบบ Auth แล้ว ก็ปล่อยผ่านไปเลย
-                            if (!String(err.message).includes('EMAIL_EXISTS')) {
-                                throw err;
-                            }
-                        }
-                    }
-
-                    // ✅ บันทึกข้อมูลและสิทธิ์ลง Firestore (ไม่เอารหัสผ่านลงไป)
-                    const dataToSave = { ...form };
-                    delete dataToSave.password;
-
-                    await adminRef.set(dataToSave, { merge: true });
-                    return await apiCall('getAdmins', currentAdmin);
-                }
-                case 'deleteAdmin': {
-                    const email = args[0];
-                    await callGAS('deleteAdminAuth', { email: email });
-                    await db.collection('admins').doc(email).delete();
-                    return await apiCall('getAdmins', currentAdmin);
                 }
 
                 // 🧾 จัดการบิล
@@ -318,7 +221,7 @@
                             }
                         }
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'updateBillStatus': {
                     const [billId, status, studentId, notify] = args;
@@ -328,6 +231,7 @@
                     const billData = billSnap.data();
 
                     if (status === 'ชำระแล้ว') {
+                        // ✅ 1. คำนวณค่าปรับ (Fine) แบบเรียลไทม์
                         let fine = 0;
                         if (billData.dueDate) {
                             const due = new Date(billData.dueDate); due.setHours(0, 0, 0, 0);
@@ -342,8 +246,14 @@
                             }
                         }
 
+                        // ✅ 2. รวมยอดสุทธิ (เงินต้น - ส่วนลด + ค่าปรับ)
                         const netTotal = (Number(billData.amount) || 0) - (Number(billData.discount) || 0) + fine;
-                        const histData = { ...billData, payDate: new Date().toISOString(), total: netTotal };
+
+                        const histData = { 
+                            ...billData, 
+                            payDate: new Date().toISOString(), 
+                            total: netTotal // บันทึกยอดที่บวกค่าปรับและหักส่วนลดแล้ว
+                        };
                         await db.collection('users').doc(String(studentId)).collection('history').doc(String(billId)).set(histData);
                     }
 
@@ -354,7 +264,7 @@
                             await callGAS('sendLineNotify', { lineUserId: stuDoc.data().userId, type: type, payload: { bill: billData, studentName: stuDoc.data().name } });
                         }
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'editBill': {
                     const form = args[0]; 
@@ -370,35 +280,36 @@
                         const oldStudentId = oldDoc.ref.parent.parent.id;
                         const updateData = { item: form.item, amount: form.amount, discount: form.discount||0, dueDate: form.dueDate||'', finePerDay: form.finePerDay||0, maxFine: form.maxFine||0, slipUrl: finalSlipUrl, studentId: form.studentId };
                         
+                        // ถ้ารหัสประจำตัวถูกเปลี่ยน ให้ย้าย Document ไปยัง Subcollection ของคนใหม่
                         if (oldStudentId !== form.studentId) {
                             await db.collection('users').doc(String(form.studentId)).collection('bills').doc(String(form.billId)).set({ ...oldDoc.data(), ...updateData });
-                            await oldDoc.ref.delete(); 
+                            await oldDoc.ref.delete(); // ลบของคนเก่าทิ้ง
                         } else {
                             await oldDoc.ref.update(updateData);
                         }
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'resetBill': {
                     const snap = await db.collectionGroup('bills').where('billId', '==', args[0]).get();
                     if(!snap.empty) {
                         await snap.docs[0].ref.update({ status: '', payDate: '', slipUrl: '' });
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'deleteBill': {
                     const snap = await db.collectionGroup('bills').where('billId', '==', args[0]).get();
                     if(!snap.empty) {
                         await snap.docs[0].ref.delete();
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'deleteHistory': {
                     const snap = await db.collectionGroup('history').where('billId', '==', args[0]).get();
                     if(!snap.empty) {
                         await snap.docs[0].ref.delete();
                     }
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'editHistory': {
                     const form = args[0]; 
@@ -410,38 +321,56 @@
                     await db.collection('users').doc(String(form.studentId)).collection('history').doc(String(form.billId)).update({ 
                         item: form.item, total: Number(form.total), payDate: new Date(form.payDate).toISOString(), slipUrl: finalSlipUrl 
                     });
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
 
                 // 🧑‍🎓 จัดการนักศึกษา
                 case 'createStudent': 
+                // ✅ แก้ไขข้อมูลนักศึกษา
                 case 'editStudent': {
                     const studentData = args[0];
                     const originalId = studentData.originalId;
 
+                    // 1. เตรียมข้อมูลที่จะอัปเดต โดยลบ originalId ออก
                     const updateData = { ...studentData };
                     delete updateData.originalId;
 
+                    // 2. จัดการกับฟิลด์ที่อาจจะเป็น undefined
+                    // ถ้า password เป็น undefined ให้ลบฟิลด์นี้ออกจากการอัปเดต
+                    // (เพื่อไม่ให้ไปทับรหัสผ่านเดิมในฐานข้อมูล ถ้าแอดมินไม่ได้แก้ไขรหัส)
                     if (updateData.password === undefined) {
                         delete updateData.password;
                     }
 
-                    if (originalId && originalId !== updateData.id) {
+                    // 3. ถ้ามีการแก้ไขรหัสนักศึกษา (ID เปลี่ยน)
+                    if (originalId !== updateData.id) {
+                        // ดึงข้อมูลเดิมมา
                         const oldDoc = await db.collection('users').doc(originalId).get();
                         if (oldDoc.exists) {
                             const oldData = oldDoc.data();
+                            
+                            // รวมข้อมูลเดิมกับข้อมูลใหม่ (โดยข้อมูลใหม่จะทับข้อมูลเดิม)
                             const mergedData = { ...oldData, ...updateData };
+                            
+                            // สร้าง Document ใหม่ด้วย ID ใหม่
                             await db.collection('users').doc(updateData.id).set(mergedData);
-                            await db.collection('users').doc(originalId).delete(); 
+                            
+                            // ลบ Document เก่าทิ้ง
+                            await db.collection('users').doc(originalId).delete();
+                            
+                            // ⚠️ หมายเหตุ: ถ้ามีการเปลี่ยนรหัสนักศึกษา และนักศึกษาคนนั้นมีข้อมูลในคอลเล็กชันอื่นๆ ด้วย (เช่น bills, payments) 
+                            // คุณอาจจะต้องเขียนโค้ดเพิ่มเพื่อไปอัปเดต studentId ในคอลเล็กชันเหล่านั้นให้ตรงกันด้วยครับ
                         }
                     } else {
-                        await db.collection('users').doc(updateData.id).set(updateData, { merge: true });
+                        // 4. ถ้าไม่ได้แก้ไขรหัสนักศึกษา (ID เหมือนเดิม) ให้อัปเดตตามปกติ
+                        await db.collection('users').doc(updateData.id).set(updateData, { merge: true }); // ใช้ merge: true เพื่ออัปเดตเฉพาะฟิลด์ที่มีการเปลี่ยนแปลง
                     }
-                    return await apiCall('getAllData', currentAdmin);
+
+                    return updateData;
                 }
                 case 'deleteStudent': { 
                     await db.collection('users').doc(String(args[0])).delete(); 
-                    return await apiCall('getAllData', currentAdmin); 
+                    return await apiCall('getAllData'); 
                 }
 
                 // 💰 จัดการการเงิน
@@ -454,20 +383,20 @@
                     if(form.isReceiptDeleted) receiptUrl = ''; 
                     if(form.isSlipDeleted) slipUrl = '';
 
+                    // ✅ บังคับแปลง ID เป็น String ป้องกัน Error n.indexOf
                     const logId = String(form.id || `FIN-${Date.now()}`); 
-                    // ✅ บันทึก cohort เข้าไปด้วย
-                    const finData = { ...form, id: logId, receiptUrl: receiptUrl, slipUrl: slipUrl, cohort: activeCohort };
+                    const finData = { ...form, id: logId, receiptUrl: receiptUrl, slipUrl: slipUrl };
                     delete finData.receiptFile; delete finData.slipFile; delete finData.isReceiptDeleted; delete finData.isSlipDeleted;
                     
                     await db.collection('finance').doc('summary').collection('logs').doc(logId).set(finData);
-                    return await apiCall('getAllData', currentAdmin);
+                    return await apiCall('getAllData');
                 }
                 case 'deleteFinanceLog': { 
                     await db.collection('finance').doc('summary').collection('logs').doc(String(args[0])).delete(); 
-                    return await apiCall('getAllData', currentAdmin); 
+                    return await apiCall('getAllData'); 
                 }
 
-                // 📦 จัดการสินค้า
+                // 📦 จัดการสินค้า (แยกฟิลด์ image2, image3, sizeChart2...)
                 case 'saveProduct': {
                     const form = args[0]; 
                     
@@ -484,24 +413,29 @@
                     }
 
                     const prodId = String(form.id || `P-${Date.now()}`); 
-                    // ✅ บันทึก cohort เข้าไปด้วย
                     const prodData = { 
-                        id: prodId, name: form.name, price: form.price, options: form.options, status: form.status, stock: form.stock,
-                        cohort: activeCohort
+                        id: prodId,
+                        name: form.name,
+                        price: form.price,
+                        options: form.options,
+                        status: form.status,
+                        stock: form.stock,
                     };
                     
+                    // ✅ เซ็ตชื่อฟิลด์แยกกัน (image, image2, image3...)
                     allMainUrls.forEach((url, i) => {
                         if (i === 0) prodData.image = url;
                         else prodData[`image${i+1}`] = url;
                     });
                     
+                    // ✅ เซ็ตชื่อฟิลด์แยกกัน (sizeChart, sizeChart2...)
                     allSizeUrls.forEach((url, i) => {
                         if (i === 0) prodData.sizeChart = url;
                         else prodData[`sizeChart${i+1}`] = url;
                     });
                     
-                    await db.collection('products').doc(prodId).set(prodData);
-                    return await apiCall('getOrderData', currentAdmin);
+                    await db.collection('products').doc(prodId).set(prodData); // บันทึกทับตัวเดิม
+                    return await apiCall('getOrderData');
                 }
                 
                 // 🛍️ ออเดอร์
@@ -511,21 +445,21 @@
                     if(!snap.empty) {
                         await snap.docs[0].ref.update({ items: form.items, price: form.price, status: form.status });
                     }
-                    return await apiCall('getOrderData', currentAdmin);
+                    return await apiCall('getOrderData');
                 }
                 case 'updateOrderStatus': {
                     const snap = await db.collectionGroup('orders').where('orderId', '==', args[0]).get();
                     if(!snap.empty) {
                         await snap.docs[0].ref.update({ status: args[1] });
                     }
-                    return await apiCall('getOrderData', currentAdmin);
+                    return await apiCall('getOrderData');
                 }
                 case 'deleteOrder': {
                     const snap = await db.collectionGroup('orders').where('orderId', '==', args[0]).get();
                     if(!snap.empty) {
                         await snap.docs[0].ref.delete();
                     }
-                    return await apiCall('getOrderData', currentAdmin);
+                    return await apiCall('getOrderData');
                 }
 
                 // 📲 ส่งแจ้งเตือน LINE 
@@ -583,10 +517,7 @@
                 case 'uploadQrImage': {
                     const [b64, mime, fName, amt, oldUrl] = args; 
                     const newUrl = await callGAS('uploadImage', { base64: b64, fileName: fName });
-                    
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
-                    const snap = await db.collection('config').doc(qrDocName).get(); 
-                    
+                    const snap = await db.collection('config').doc('qrMap').get(); 
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
                     if (oldUrl) { 
                         const idx = codes.findIndex(c => c.url === oldUrl); 
@@ -594,73 +525,91 @@
                     } else {
                         codes.push({ url: newUrl, amount: amt });
                     }
-                    await db.collection('config').doc(qrDocName).set({ codes: codes }); 
-                    return (await apiCall('getAllData', currentAdmin)).amount;
+                    await db.collection('config').doc('qrMap').set({ codes: codes }); 
+                    return (await apiCall('getAllData')).amount;
                 }
                 case 'updateQrCode': {
                     const [oldUrl, newUrl, newAmount] = args; 
-                    
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
-                    const snap = await db.collection('config').doc(qrDocName).get(); 
-                    
+                    const snap = await db.collection('config').doc('qrMap').get(); 
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
                     const idx = codes.findIndex(c => c.url === oldUrl); 
                     if(idx >= 0) { 
                         codes[idx].amount = newAmount; 
                         if(newUrl) codes[idx].url = newUrl; 
-                        await db.collection('config').doc(qrDocName).set({ codes: codes }); 
+                        await db.collection('config').doc('qrMap').set({ codes: codes }); 
                     }
-                    return (await apiCall('getAllData', currentAdmin)).amount;
+                    return (await apiCall('getAllData')).amount;
                 }
                 case 'deleteQrCode': {
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
-                    const snap = await db.collection('config').doc(qrDocName).get(); 
-                    
+                    const snap = await db.collection('config').doc('qrMap').get(); 
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
                     codes = codes.filter(c => c.url !== args[0]); 
-                    await db.collection('config').doc(qrDocName).set({ codes: codes }); 
-                    return (await apiCall('getAllData', currentAdmin)).amount;
+                    await db.collection('config').doc('qrMap').set({ codes: codes }); 
+                    return (await apiCall('getAllData')).amount;
                 }
 
+                
+
+                // ✅ เพิ่มคำสั่งสำหรับเปลี่ยนรหัสผ่าน Admin ใน Firebase Auth
                 case 'changeAdminPassword': {
                     const [currentPassword, newPassword] = args;
                     const user = firebase.auth().currentUser;
                     if (!user) throw new Error('กรุณาล็อกอินก่อนทำรายการ');
+                    
+                    // ต้อง Login ซ้ำ (Re-authenticate) เพื่อยืนยันรหัสเดิมก่อนเปลี่ยน
                     const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
                     await user.reauthenticateWithCredential(cred);
                     await user.updatePassword(newPassword);
                     return "Password Updated";
                 }
+                
+                // ✅ สั่งลบเฉพาะ User ฝั่ง Email
                 case 'deleteStudentAuthEmail': {
                     const studentId = args[0];
-                    const firebaseUid = args[1]; 
+                    const firebaseUid = args[1]; // รับ firebaseUid มา
+                    
+                    // 1. สั่ง GAS ลบ Auth ฝั่ง Email
                     await callGAS('deleteUserAuthEmail', { firebaseUid: firebaseUid });
+                    
+                    // 2. ลบสถานะใน Firestore
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
                         hasPassword: false, 
                         password: firebase.firestore.FieldValue.delete(),
-                        firebaseUid: firebase.firestore.FieldValue.delete() 
+                        firebaseUid: firebase.firestore.FieldValue.delete() // ลบ firebaseUid ออกด้วย
                     });
                     return true;
                 }
+
+                // ✅ สั่งลบเฉพาะ User ฝั่ง LINE
                 case 'deleteStudentAuthLine': {
                     const studentId = args[0];
-                    const lineUid = args[1]; 
+                    const lineUid = args[1]; // รับ lineUid มา
+                    
+                    // 1. สั่ง GAS ลบ Auth ฝั่ง LINE
                     await callGAS('deleteUserAuthLine', { lineUid: lineUid });
+                    
+                    // 2. ลบข้อมูล LINE ออกจาก Firestore
                     const userRef = db.collection('users').doc(studentId);
                     await userRef.update({ 
-                        userId: firebase.firestore.FieldValue.delete(), 
+                        userId: firebase.firestore.FieldValue.delete(), // สมมติว่าเก็บ id ไลน์ไว้ใน userId ด้วย (ถ้ามี)
                         lineUid: firebase.firestore.FieldValue.delete() 
                     });
                     return true;
                 }
+
+                // ✅ สั่งเปลี่ยนรหัสผ่านใหม่ (ฝั่ง Email)
                 case 'updateStudentPassword': {
                     const studentId = args[0];
                     const firebaseUid = args[1];
                     const newPassword = args[2];
+                    
+                    // สั่ง GAS อัปเดตรหัส
                     await callGAS('updateUserPassword', { firebaseUid: firebaseUid, newPassword: newPassword });
                     return true;
                 }
+
+                // ✅ ตรวจสอบรหัสผ่านแอดมินก่อนทำงานอันตราย
                 case 'verifyAdminPassword': {
                     const password = args[0];
                     const user = firebase.auth().currentUser;
@@ -672,31 +621,40 @@
                         throw new Error('รหัสผ่านแอดมินไม่ถูกต้อง');
                     }
                 }
+
+                // ✅ ลบข้อมูลผู้ใช้ทั้งหมด (Firestore + Auth)
                 case 'deleteFullUser': {
                     const studentId = args[0];
                     const lineUid = args[1];
                     const firebaseUid = args[2];
 
+                    // 1. ลบจาก Firebase Auth (ส่งไปที่ GAS)
                     await callGAS('deleteUserAuthEmail', { firebaseUid });
                     await callGAS('deleteUserAuthLine', { lineUid });
 
+                    // 2. ลบข้อมูลใน Firestore (ลบตัวเอกและ Sub-collection)
+                    // หมายเหตุ: การลบคอลเล็กชันย่อยในเครื่องลูกอาจต้องลบทีละรายการ
                     const userRef = db.collection('users').doc(studentId);
                     
+                    // ลบบิลทั้งหมด
                     const bills = await userRef.collection('bills').get();
                     const billBatch = db.batch();
                     bills.forEach(doc => billBatch.delete(doc.ref));
                     await billBatch.commit();
 
+                    // ลบประวัติทั้งหมด
                     const history = await userRef.collection('history').get();
                     const histBatch = db.batch();
                     history.forEach(doc => histBatch.delete(doc.ref));
                     await histBatch.commit();
 
+                    // ลบข้อมูลโปรไฟล์
                     await userRef.delete();
                     
                     return true;
                 }
 
+                // ⬇️ ระวังอย่าเอาไปวางใต้ default นะครับ
                 default:
                     throw new Error("Action not mapped to Firebase: " + action);
             }
@@ -706,7 +664,6 @@
         }
     };
 
-    
     // --- HELPERS (Updated for Order System) ---
     const getStatusColor = (status) => {
       if (!status) return 'bg-gray-100 text-gray-600';
@@ -3162,213 +3119,6 @@
         );
     };
 
-    // ✅ เพิ่ม props students เข้ามาเพื่อดึงข้อมูลชั้นปี
-    const AdminView = ({ admins, students, onSaveAdmin, onDeleteAdmin, loading }) => {
-        const [isModalOpen, setIsModalOpen] = useState(false);
-        const [editingAdmin, setEditingAdmin] = useState(null);
-
-        // ✅ คำนวณชั้นปีอัตโนมัติจาก 2 ตัวหน้าของรหัสนักศึกษา
-        const availableCohorts = useMemo(() => {
-            if (!students || students.length === 0) return ['67']; // ค่าเริ่มต้นถ้ายังไม่มีนักศึกษา
-            // ดึง 2 ตัวหน้า กรองเฉพาะที่เป็นตัวเลข
-            const cohorts = students.map(s => String(s.id).substring(0, 2)).filter(c => c.length === 2 && !isNaN(c));
-            // ตัดตัวซ้ำ และเรียงลำดับจากปีใหม่ไปปีเก่า
-            const uniqueCohorts = [...new Set(cohorts)].sort((a, b) => b - a);
-            return uniqueCohorts.length > 0 ? uniqueCohorts : ['67'];
-        }, [students]);
-        
-        // สิทธิ์ทั้งหมดที่มีในระบบ
-        const ALL_PERMISSIONS = [
-            { id: 'dashboard', label: 'แดชบอร์ด' },
-            { id: 'bills', label: 'จัดการบิล' },
-            { id: 'orders', label: 'สั่งซื้อสินค้า' },
-            { id: 'finance', label: 'บัญชี/การเงิน' },
-            { id: 'history', label: 'ประวัติชำระเงิน' },
-            { id: 'students', label: 'จัดการผู้ใช้' },
-            { id: 'notifications', label: 'แจ้งเตือน (LINE)' },
-            { id: 'settings', label: 'ตั้งค่าระบบ' }
-        ];
-
-        const [form, setForm] = useState({
-            email: '', name: '', password: '', role: 'admin', cohort: availableCohorts[0], permissions: ['dashboard']
-        });
-
-        // ✅ ปรับฟังก์ชันให้ใช้ได้ทั้ง เพิ่ม และ แก้ไข
-        const openModal = (admin = null) => {
-            if (admin) {
-                setEditingAdmin(admin);
-                setForm({ 
-                    email: admin.email, 
-                    name: admin.name, 
-                    password: '', // เว้นว่างไว้ ไม่ต้องโชว์รหัสเดิม
-                    role: admin.role || 'admin', 
-                    cohort: admin.cohort || availableCohorts[0], 
-                    permissions: admin.permissions || ['dashboard'] 
-                });
-            } else {
-                setEditingAdmin(null);
-                setForm({ email: '', name: '', password: '', role: 'admin', cohort: availableCohorts[0], permissions: ['dashboard'] });
-            }
-            setIsModalOpen(true);
-        };
-
-        const togglePermission = (permId) => {
-            setForm(prev => {
-                const newPerms = prev.permissions.includes(permId) 
-                    ? prev.permissions.filter(p => p !== permId) 
-                    : [...prev.permissions, permId];
-                return { ...prev, permissions: newPerms };
-            });
-        };
-
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            // ถ้าระบุรหัสผ่านใหม่ค่อยส่งไปอัปเดต ถ้าเว้นว่างให้ลบฟิลด์ทิ้ง (ไม่แก้รหัส)
-            const submitData = { ...form };
-            if (editingAdmin && !submitData.password) {
-                delete submitData.password;
-            }
-            onSaveAdmin(submitData);
-            setIsModalOpen(false);
-        };
-
-        return (
-            <div className="space-y-5 pb-24 animate-fade-in">
-                <div className="flex justify-between items-center px-2">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800">จัดการผู้ดูแลระบบ</h2>
-                        <p className="text-xs text-gray-500">เพิ่ม/ลด และจัดการสิทธิ์ของแอดมิน</p>
-                    </div>
-                    {/* ✅ เปลี่ยนเป็นเรียกใช้ openModal() แบบไม่มีพารามิเตอร์ */}
-                    <button onClick={() => openModal()} className="px-4 py-2.5 bg-gray-800 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-gray-700 transition shadow-md">
-                        <Icon name="user-plus" weight="bold"/> เพิ่มแอดมิน
-                    </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {admins.map((admin, idx) => (
-                        <div key={idx} className="bg-white p-5 rounded-2xl card-shadow border border-gray-100 flex flex-col h-full relative">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${admin.role === 'superadmin' ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-md' : 'bg-gradient-to-tr from-blue-500 to-cyan-500 shadow-md'}`}>
-                                        <Icon name={admin.role === 'superadmin' ? 'crown' : 'user-gear'} size={24} weight="fill"/>
-                                    </div>
-                                    <div className="min-w-0 pr-2">
-                                        <h3 className="font-bold text-gray-800 truncate">{admin.name}</h3>
-                                        <p className="text-xs text-gray-500 truncate">{admin.email}</p>
-                                    </div>
-                                </div>
-                                <span className={`flex-shrink-0 px-2 py-1 rounded-md text-[10px] font-bold shadow-sm ${admin.role === 'superadmin' ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`}>
-                                    {admin.role === 'superadmin' ? 'Super Admin' : `Admin ปี ${admin.cohort}`}
-                                </span>
-                            </div>
-                            
-                            <div className="flex flex-wrap gap-1.5 mb-6">
-                                {admin.role === 'superadmin' ? (
-                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2.5 py-1 rounded font-bold border border-gray-200 shadow-sm"><Icon name="star" weight="fill" className="inline mr-1 text-amber-500"/>เข้าถึงได้ทุกเมนู</span>
-                                ) : (
-                                    admin.permissions.map(p => {
-                                        const pName = ALL_PERMISSIONS.find(ap => ap.id === p)?.label || p;
-                                        return <span key={p} className="text-[10px] bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded shadow-sm">{pName}</span>;
-                                    })
-                                )}
-                            </div>
-
-                            {/* ✅ เพิ่มปุ่มแก้ไข และจัดปุ่มให้อยู่ล่างสุดเสมอ */}
-                            <div className="flex gap-2 border-t border-gray-50 pt-3 mt-auto relative z-10">
-                                <button onClick={() => openModal(admin)} className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex justify-center items-center gap-1 border border-blue-100">
-                                    <Icon name="pencil-simple" weight="bold"/> แก้ไข
-                                </button>
-                                {admin.role !== 'superadmin' && (
-                                    <button onClick={() => { if(window.confirm(`ยืนยันการลบแอดมิน ${admin.name}?`)) onDeleteAdmin(admin.email); }} className="flex-1 py-2 bg-white text-red-500 rounded-lg text-xs font-bold hover:bg-red-50 transition flex justify-center items-center gap-1 border border-red-100">
-                                        <Icon name="trash" weight="bold"/> ลบ
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingAdmin ? "แก้ไขผู้ดูแลระบบ" : "เพิ่มผู้ดูแลระบบ"}>
-                    <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 block mb-1">อีเมลสำหรับ Login</label>
-                            <input 
-                                type="email" required 
-                                value={form.email} 
-                                onChange={e=>setForm({...form, email: e.target.value})} 
-                                readOnly={!!editingAdmin} /* ไม่อนุญาตให้แก้อีเมลตอน Edit */
-                                className={`w-full p-3 rounded-xl border outline-none font-medium text-sm ${editingAdmin ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'bg-gray-50 focus:border-blue-500 text-gray-700'}`}
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 block mb-1">ชื่อแอดมิน</label>
-                            <input type="text" required value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none text-sm font-medium"/>
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 block mb-1">
-                                {editingAdmin ? "รหัสผ่าน " : "รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)"}
-                            </label>
-                            <input 
-                                type="text" 
-                                required={!editingAdmin} 
-                                value={form.password || ''} 
-                                onChange={e=>setForm({...form, password: e.target.value})} 
-                                disabled={!!editingAdmin} /* ล็อคช่องเมื่อกดแก้ไข */
-                                className={`w-full p-3 rounded-xl border outline-none text-sm font-medium ${editingAdmin ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-gray-50 focus:border-blue-500 text-gray-700'}`}
-                                placeholder={editingAdmin ? "หากต้องการเปลี่ยนรหัส ลบและเพิ่มบัญชีใหม่" : "ตั้งรหัสผ่านเบื้องต้น..."}
-                            />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1">ระดับสิทธิ์ (Role)</label>
-                                <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})} className="w-full p-3 bg-white rounded-xl border outline-none text-sm font-bold text-gray-700">
-                                    <option value="admin">Admin ทั่วไป</option>
-                                    <option value="superadmin">Super Admin</option>
-                                </select>
-                            </div>
-                            {form.role !== 'superadmin' && (
-                                <div>
-                                    <label className="text-xs font-bold text-gray-500 block mb-1">ดูแลข้อมูลของชั้นปี</label>
-                                    {/* ✅ นำ availableCohorts มาสร้างเป็น Option အัตโนมัติ */}
-                                    <select value={form.cohort} onChange={e=>setForm({...form, cohort: e.target.value})} className="w-full p-3 bg-white rounded-xl border outline-none text-sm font-bold text-gray-700">
-                                        {availableCohorts.map(c => (
-                                            <option key={c} value={c}>ปี {c}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-
-                        {form.role !== 'superadmin' && (
-                            <div className="border-t border-gray-100 pt-4 mt-2">
-                                <label className="text-xs font-bold text-gray-500 block mb-3 flex items-center gap-1"><Icon name="shield-check" weight="fill"/> เมนูที่อนุญาตให้เข้าถึง</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {ALL_PERMISSIONS.map(perm => (
-                                        <label key={perm.id} className={`flex items-center gap-2 p-2 border rounded-xl cursor-pointer transition shadow-sm ${form.permissions.includes(perm.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200'}`}>
-                                            <input type="checkbox" checked={form.permissions.includes(perm.id)} onChange={() => togglePermission(perm.id)} className="hidden"/>
-                                            <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${form.permissions.includes(perm.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
-                                                {form.permissions.includes(perm.id) && <Icon name="check" size={10} className="text-white" weight="bold"/>}
-                                            </div>
-                                            <span className="text-xs font-bold">{perm.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <button type="submit" disabled={loading} className="w-full py-4 bg-gray-800 text-white font-bold rounded-xl shadow-lg mt-4 flex justify-center items-center gap-2 hover:bg-gray-700 transition active:scale-95">
-                            {loading ? <Icon name="circle-notch" className="animate-spin" /> : <Icon name="floppy-disk" weight="fill" size={20} />}
-                            {loading ? 'กำลังบันทึก...' : (editingAdmin ? 'บันทึกการแก้ไข' : 'สร้างบัญชีแอดมิน')}
-                        </button>
-                    </form>
-                </Modal>
-            </div>
-        );
-    };
-    
-
     // --- Helper: Image Gallery (รองรับ image, image2, image3...) ---
     const ProductImageGallery = ({ product }) => {
         const images = useMemo(() => {
@@ -3674,10 +3424,8 @@
     };
 
     // --- Settings View ---
-    const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage, onSaveMaintenanceMsg }) => {
-        // ✅ 1. เพิ่มบรรทัดนี้กลับมา เพื่อกำหนดค่า isMaintenance ให้หน้าจอรู้ว่าเปิดระบบอยู่ไหม
-        const isMaintenance = data.systemStatus === 'ON'; 
-
+    const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage }) => {
+        const isMaintenance = data.systemStatus === 'ON';
         const [mMsg, setMMsg] = useState(data.config?.maintenanceMsg || '');
         const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', targetStatus: '' });
         const [successModal, setSuccessModal] = useState(false);
@@ -3691,17 +3439,14 @@
         const qrCodes = data.amount?.qrCodes || [];
 
         const handleSaveMsg = () => {
-            onSaveMaintenanceMsg(mMsg);
-            setSuccessModal(true); // โชว์เด้งแจ้งเตือนสำเร็จ
+            setProcessingAction('SAVING_CONFIG');
+            db.collection('config').doc('system').set({ maintenanceMsg: mMsg }, { merge: true }).then(() => { setProcessingAction(null); setSuccessModal(true); });
         };
 
         const confirmToggleMaintenance = () => {
             setProcessingAction('TOGGLING_SYSTEM');
             setConfirmModal({ ...confirmModal, isOpen: false });
-            // ใช้ apiCall ผ่าน App ที่ผูก Context ไว้แล้ว
-            apiCall('toggleMaintenance', currentAdmin, confirmModal.targetStatus)
-              .then((newData) => { setData(newData); setProcessingAction(null); setSuccessModal(true); })
-              .catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
+            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => { setData(newData); setProcessingAction(null); setSuccessModal(true); }).catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
         };
 
         const handleConfirm = () => {
@@ -5129,71 +4874,23 @@
       const [notifyEnabled, setNotifyEnabled] = useState(true); 
       const isFetchingRef = useRef(false);
 
-     // ✅ ตัวแปรใหม่สำหรับจัดการแอดมิน
-      const [currentAdmin, setCurrentAdmin] = useState(null);
-      const [adminList, setAdminList] = useState([]); 
-
-      // 🌟 เพิ่มโค้ด 3 บล็อกนี้ 🌟
-      const [viewCohort, setViewCohort] = useState('ALL'); // State สำหรับ Super Admin เลือกชั้นปี
-
-      // ดึงชั้นปีทั้งหมดที่มีในระบบมาทำ Dropdown (เช่น 66, 67, 68)
-      const availableCohorts = useMemo(() => {
-          if (!data || !data.students) return [];
-          const cohorts = data.students.map(s => String(s.id).substring(0, 2)).filter(c => c.length === 2 && !isNaN(c));
-          return [...new Set(cohorts)].sort((a, b) => b - a);
-      }, [data?.students]);
-
-      // สร้าง Context จำลองสิทธิ์ ถ้าเป็น Super Admin ให้สิทธิ์เท่ากับปีที่เลือกดู
-      const adminContext = useMemo(() => {
-          if (!currentAdmin) return null;
-          return {
-              ...currentAdmin,
-              effectiveCohort: currentAdmin.role === 'superadmin' ? viewCohort : currentAdmin.cohort
-          };
-      }, [currentAdmin, viewCohort]);
-
-      // ✅ 1. ตรวจสอบ Login และดึงสิทธิ์แอดมิน
+      // ✅ 1. ตรวจสอบ Login อัตโนมัติด้วย Firebase Auth
       useEffect(() => {
-          const unsubscribe = firebase.auth().onAuthStateChanged(async (user) => {
-              if (user) {
-                  try {
-                      // ไปค้นหาใน Collection 'admins' ว่ามีอีเมลนี้ไหม
-                      const adminDoc = await db.collection('admins').doc(user.email).get();
-                      
-                      if (adminDoc.exists) {
-                          const adminData = adminDoc.data();
-                          // เซ็ตข้อมูลแอดมินปัจจุบัน
-                          setCurrentAdmin({ email: user.email, ...adminData });
-                          setIsLoggedIn(true);
-                      } else {
-                          // ถ้าเป็นอีเมลที่ไม่มีในตาราง admins ให้เด้งออก
-                          alert('บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้ระบบหลังบ้าน');
-                          firebase.auth().signOut();
-                          setIsLoggedIn(false);
-                      }
-                  } catch (error) {
-                      console.error("Error fetching admin role:", error);
-                      alert('เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์');
-                      firebase.auth().signOut();
-                      setIsLoggedIn(false);
-                  }
-              } else {
-                  setIsLoggedIn(false);
-                  setCurrentAdmin(null);
-              }
+          const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+              if (user) setIsLoggedIn(true);
+              else setIsLoggedIn(false);
               setIsAuthChecking(false);
           });
           return () => unsubscribe();
       }, []);
 
-      // ✅ 2. ดึงข้อมูลครั้งแรกสุด "ครั้งเดียว" หรือ "ตอนเปลี่ยนชั้นปีที่ดู"
+      // ✅ 2. ดึงข้อมูลครั้งแรกสุด "ครั้งเดียว" ตอนที่ล็อกอินสำเร็จ (แก้ปัญหาหน้าจอค้าง)
       useEffect(() => { 
-        if (isLoggedIn && currentAdmin) {
+        if (isLoggedIn) {
             fetchData(true); 
             fetchOrderData(); 
-            fetchAdmins();
         }
-      }, [isLoggedIn, currentAdmin, viewCohort]); // <--- เพิ่ม viewCohort เข้าไปในวงเล็บนี้
+      }, [isLoggedIn]);
 
       // ✅ 3. ระบบ Auto-refresh เพื่อดึงข้อมูลเบื้องหลังทุกๆ 5 วินาที
       useEffect(() => {
@@ -5240,14 +4937,20 @@
         }
     };
       
+      // ✅ เพิ่มฟังก์ชันรับค่าจาก Modal แล้วไปบอก apiCall
+      const handleEditHistoryData = (formData) => { 
+          setProcessingAction('EDIT_HISTORY'); 
+          apiCall('editHistory', formData).then(newData => { 
+              setData(newData); setEditingHistory(null); finishAction(); 
+          }).catch(err => { alert(err.message); setProcessingAction(null); }); 
+      };
 
       const fetchData = (showSpinner = false) => { 
         if (isFetchingRef.current) return; 
         isFetchingRef.current = true; 
         if (showSpinner) setLoading(true); 
 
-        // ✅ ใช้ adminContext แทน currentAdmin
-        apiCall('getAllData', adminContext).then(response => {
+        apiCall('getAllData').then(response => {
             if (!processingAction && !isEditing) { setData(response); } 
             if (showSpinner) { setLoading(false); } 
             isFetchingRef.current = false;
@@ -5258,50 +4961,16 @@
       };
       
       const fetchOrderData = () => { 
-          apiCall('getOrderData', adminContext).then(res => { if (!processingAction) setOrderData(res); }).catch(err => console.error(err)); 
+          apiCall('getOrderData').then(res => { if (!processingAction) setOrderData(res); }).catch(err => console.error(err)); 
       };
 
-      const fetchAdmins = () => {
-          if (currentAdmin && currentAdmin.role === 'superadmin') {
-              apiCall('getAdmins', adminContext).then(res => setAdminList(res)).catch(err => console.error(err));
-          }
-      }
-
-      const handleEditHistoryData = (formData) => { 
-          setProcessingAction('EDIT_HISTORY'); 
-          apiCall('editHistory', adminContext, formData).then(newData => { 
-              setData(newData); setEditingHistory(null); finishAction(); 
-          }).catch(err => { alert(err.message); setProcessingAction(null); }); 
-      };
-
-     // Actions ...
-      const handleSaveFinance = (formData) => { setProcessingAction('SAVE_FINANCE'); apiCall('saveFinanceLog', adminContext, formData).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
-      const handleDeleteFinance = (id) => { setProcessingAction('DELETE'); apiCall('deleteFinanceLog', adminContext, id).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
-      const handleToggleOrderSystem = (status) => { setProcessingAction('TOGGLE_SYSTEM'); setOrderData(prev => ({ ...prev, systemStatus: status ? 'ON' : 'OFF' })); setTimeout(() => { apiCall('toggleOrderSystem', adminContext, status).then(() => finishAction()).catch(() => { setOrderData(prev => ({ ...prev, systemStatus: status ? 'OFF' : 'ON' })); alert("บันทึกไม่สำเร็จ"); }); }, 500); };
-      const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', adminContext, form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
-      const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', adminContext, id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
-      const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', adminContext, formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
-
-      // ✅ 1. ฟังก์ชันบันทึกแอดมิน
-      const handleSaveAdmin = (formData) => {
-          setProcessingAction('SAVE_ADMIN');
-          apiCall('saveAdmin', adminContext, formData)
-              .then((newAdminList) => {
-                  setAdminList(newAdminList); 
-                  finishAction(); 
-              })
-              .catch((err) => {
-                  setErrorMessage(err.message);
-                  setIsErrorModalOpen(true);
-                  setProcessingAction(null);
-              });
-      };
-
-      // ✅ 2. ฟังก์ชันเตือนและลบแอดมิน
-      const handleDeleteAdminClick = (email) => { 
-          setDeleteTarget({ type: 'ADMIN', id: email }); 
-          setIsDeleteConfirmOpen(true); 
-      };
+      // Actions ...
+      const handleSaveFinance = (formData) => { setProcessingAction('SAVE_FINANCE'); apiCall('saveFinanceLog', formData).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleDeleteFinance = (id) => { setProcessingAction('DELETE'); apiCall('deleteFinanceLog', id).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleToggleOrderSystem = (status) => { setProcessingAction('TOGGLE_SYSTEM'); setOrderData(prev => ({ ...prev, systemStatus: status ? 'ON' : 'OFF' })); setTimeout(() => { apiCall('toggleOrderSystem', status).then(() => finishAction()).catch(() => { setOrderData(prev => ({ ...prev, systemStatus: status ? 'OFF' : 'ON' })); alert("บันทึกไม่สำเร็จ"); }); }, 500); };
+      const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
+      const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
+      const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
       
       const confirmDelete = () => { 
           if (!deleteTarget) return; 
@@ -5316,21 +4985,18 @@
           else if (targetType === 'STUDENT') setData(prev => ({ ...prev, students: prev.students.filter(s => s.id !== targetId) }));
           else if (targetType === 'QR') setData(prev => ({ ...prev, amount: { ...prev.amount, qrCodes: prev.amount.qrCodes.filter(q => q.url !== targetId) } }));
           else if (targetType === 'ANNOUNCEMENT') { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); }
-          else if (targetType === 'ADMIN') setAdminList(prev => prev.filter(a => a.email !== targetId)); 
           
           setTimeout(() => {
               const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
               const onSuccess = () => finishAction();
               
-              if (targetType === 'BILL') apiCall('deleteBill', adminContext, targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'HISTORY') apiCall('deleteHistory', adminContext, targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'STUDENT') apiCall('deleteStudent', adminContext, targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'QR') apiCall('deleteQrCode', adminContext, targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'PRODUCT') apiCall('deleteProduct', adminContext, targetId).then(onSuccess).catch(onError);
-              else if (targetType === 'ORDER') apiCall('deleteOrder', adminContext, targetId).then(onSuccess).catch(onError);
-              else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', adminContext, { type: 'text', text: '' }).then(onSuccess).catch(onError);
-              else if (targetType === 'ADMIN') apiCall('deleteAdmin', adminContext, targetId).then(list => { setAdminList(list); onSuccess(); }).catch(onError); 
-
+              if (targetType === 'BILL') apiCall('deleteBill', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'QR') apiCall('deleteQrCode', targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).then(onSuccess).catch(onError);
+              else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).then(onSuccess).catch(onError);
+              else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', { type: 'text', text: '' }).then(onSuccess).catch(onError);
               setDeleteTarget(null);
           }, 500);
       };
@@ -5342,46 +5008,24 @@
               formData.studentIds.forEach(studentId => {
                   const singleBillData = { ...formData, studentId: studentId };
                   delete singleBillData.studentIds; 
-                  apiCall('createBill', adminContext, singleBillData).then(() => { completed++; if (completed === total) { fetchData(false); setIsCreateModalOpen(false); finishAction(); } }).catch((err) => { completed++; if (completed === total) { alert("บางรายการอาจไม่สำเร็จ กรุณาตรวจสอบ"); setProcessingAction(null); } });
+                  apiCall('createBill', singleBillData).then(() => { completed++; if (completed === total) { fetchData(false); setIsCreateModalOpen(false); finishAction(); } }).catch((err) => { completed++; if (completed === total) { alert("บางรายการอาจไม่สำเร็จ กรุณาตรวจสอบ"); setProcessingAction(null); } });
               });
           } else {
-              apiCall('createBill', adminContext, formData).then((newData) => { setData(newData); setIsCreateModalOpen(false); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); 
+              apiCall('createBill', formData).then((newData) => { setData(newData); setIsCreateModalOpen(false); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); 
           }
       };
 
-      const handleEditBill = (formData) => { setProcessingAction('EDITING'); apiCall('editBill', adminContext, formData).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); };
-      const handleSaveAnnouncement = () => { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', adminContext, announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); };
-      const handleDeleteAnnouncement = () => { if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', adminContext, { type: 'text', text: '' }).then((resText) => { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); } };
-      
-      const handleSaveStudent = (formData) => { 
-          setProcessingAction('SAVE_STUDENT'); 
-          const onSuccess = (newData) => { setData(newData); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); }; 
-          const onError = (err) => { setErrorMessage(err.message || String(err).replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); }; 
-          if (selectedStudent) { 
-              apiCall('editStudent', adminContext, formData).then(onSuccess).catch(onError); 
-          } else { 
-              apiCall('createStudent', adminContext, formData).then(onSuccess).catch(onError); 
-          } 
-      };
-
-      const handleSaveMaintenanceMsg = (msg) => {
-          setProcessingAction('SAVING_CONFIG');
-          apiCall('saveMaintenanceMsg', adminContext, msg).then((newData) => {
-              setData(newData);
-              finishAction();
-          }).catch((err) => {
-              alert('Error: ' + err.message);
-              setProcessingAction(null);
-          });
-      };
-
+      const handleEditBill = (formData) => { setProcessingAction('EDITING'); apiCall('editBill', formData).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); };
+      const handleSaveAnnouncement = () => { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); };
+      const handleDeleteAnnouncement = () => { if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', { type: 'text', text: '' }).then((resText) => { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); } };
+      const handleSaveStudent = (formData) => { setProcessingAction('SAVE_STUDENT'); const onSuccess = (newData) => { setData(newData); setIsStudentModalOpen(false); setSelectedStudent(null); finishAction(); }; const onError = (err) => { setErrorMessage(err.message || String(err).replace('Error: ', '')); setIsErrorModalOpen(true); setProcessingAction(null); }; if (selectedStudent) { apiCall('editStudent', formData).then(onSuccess).catch(onError); } else { apiCall('createStudent', formData).then(onSuccess).catch(onError); } };
       const handleQrUploadSuccess = (newData) => { setData(prev => ({...prev, amount: newData})); setIsQrModalOpen(false); setEditingQrData(null); finishAction(); };
-      const handleSendCustomNotification = (form) => { setProcessingAction('NOTIFY'); apiCall('sendCustomNotification', adminContext, form).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleSendOverdueNotification = (billId) => { setProcessingAction('NOTIFY'); apiCall('sendOverdueNotification', adminContext, billId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleSendAccountNotification = (studentId) => { setProcessingAction('NOTIFY'); apiCall('sendAccountNotification', adminContext, studentId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อมูลไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleSendOverdueBatchNotification = (targets) => { setProcessingAction('NOTIFY'); apiCall('sendBatchLineNotify', adminContext, { targets }).then(() => { finishAction(); }).catch((err) => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
-      const handleResetBill = () => { setIsResetConfirmOpen(false); if (!selectedBill) return; setProcessingAction('RESET'); apiCall('resetBill', adminContext, selectedBill.billId).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch((err) => { alert("Error: " + err.message); setProcessingAction(null); }); };
-      const handleUpdateBill = (status) => { if(!selectedBill) return; let actionType = 'LOADING'; if (status === 'ชำระแล้ว') actionType = 'APPROVE'; if (status === '') actionType = 'REJECT'; if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; setProcessingAction(actionType); apiCall('updateBillStatus', adminContext, selectedBill.billId, status, selectedBill.studentId, notifyEnabled).then((newData) => { setSelectedBill(null); setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
+      const handleSendCustomNotification = (form) => { setProcessingAction('NOTIFY'); apiCall('sendCustomNotification', form).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleSendOverdueNotification = (billId) => { setProcessingAction('NOTIFY'); apiCall('sendOverdueNotification', billId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleSendAccountNotification = (studentId) => { setProcessingAction('NOTIFY'); apiCall('sendAccountNotification', studentId).then(() => { finishAction(); }).catch(err => { setErrorMessage(err.message || "ส่งข้อมูลไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+     const handleSendOverdueBatchNotification = (targets) => { setProcessingAction('NOTIFY'); apiCall('sendBatchLineNotify', { targets }).then(() => { finishAction(); }).catch((err) => { setErrorMessage(err.message || "ส่งข้อความไม่สำเร็จ"); setIsErrorModalOpen(true); setProcessingAction(null); }); };
+      const handleResetBill = () => { setIsResetConfirmOpen(false); if (!selectedBill) return; setProcessingAction('RESET'); apiCall('resetBill', selectedBill.billId).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch((err) => { alert("Error: " + err.message); setProcessingAction(null); }); };
+      const handleUpdateBill = (status) => { if(!selectedBill) return; let actionType = 'LOADING'; if (status === 'ชำระแล้ว') actionType = 'APPROVE'; if (status === '') actionType = 'REJECT'; if (status === 'รอตรวจสอบ') actionType = 'WAIT_CHECK'; setProcessingAction(actionType); apiCall('updateBillStatus', selectedBill.billId, status, selectedBill.studentId, notifyEnabled).then((newData) => { setSelectedBill(null); setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
       
       const handleDeleteProductClick = (id) => { setDeleteTarget({ type: 'PRODUCT', id: id }); setIsDeleteConfirmOpen(true); };
       const handleDeleteOrderClick = (id) => { setDeleteTarget({ type: 'ORDER', id: id }); setIsDeleteConfirmOpen(true); };
@@ -5390,12 +5034,10 @@
       const handleDeleteHistoryClick = (billId) => { setDeleteTarget({ type: 'HISTORY', id: billId }); setIsDeleteConfirmOpen(true); };
       const handleDeleteStudentClick = (studentId) => { setDeleteTarget({ type: 'STUDENT', id: studentId }); setIsDeleteConfirmOpen(true); };
       const handleDeleteQrClick = (url) => { setDeleteTarget({ type: 'QR', id: url }); setIsDeleteConfirmOpen(true); };
-      
       const handleGoToUnpaidBills = () => { setBillFilter('unpaid'); setActiveTab('bills'); };
       const handleGoToOverdueBills = () => { setBillFilter('overdue'); setActiveTab('bills'); };
       const handleGoToNotifications = () => { setNotificationSubTab('overdue'); setActiveTab('notifications'); };
-      const handleGoToPendingBills = () => { setBillFilter('pending'); setActiveTab('bills'); };
-      
+      const handleGoToPendingBills = () => { setBillFilter('pending'); setActiveTab('bills'); }; // ✅ เพิ่มตัวนี้
       const openQrManager = () => { setEditingQrData(null); setIsQrModalOpen(true); };
       const openQrEditor = (qr) => { setEditingQrData(qr); setIsQrModalOpen(true); };
       const handleViewStudentBills = (studentId) => { setViewingStudentId(studentId); };
@@ -5407,7 +5049,6 @@
           if (deleteTarget?.type === 'PRODUCT') return "คุณต้องการลบสินค้านี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'ORDER') return "คุณต้องการลบออเดอร์นี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'ANNOUNCEMENT') return "คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?";
-          if (deleteTarget?.type === 'ADMIN') return "คุณต้องการลบผู้ดูแลระบบคนนี้ใช่หรือไม่?"; // ✅ ข้อความยืนยัน
           return "คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"; 
       };
 
@@ -5427,25 +5068,16 @@
       if (!isLoggedIn) {
           return <LoginScreen />;
       }
-      const allMenus = [ 
-          { id: 'dashboard', icon: 'squares-four', label: 'แดชบอร์ด' }, 
-          { id: 'bills', icon: 'receipt', label: 'จัดการบิล' }, 
-          { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อสินค้า' },
-          { id: 'finance', icon: 'wallet', label: 'บัญชี/การเงิน' }, 
-          { id: 'history', icon: 'clipboard-text', label: 'ประวัติชำระเงิน' }, 
-          { id: 'students', icon: 'users', label: 'จัดการผู้ใช้' }, 
-          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน (LINE)' },
-          { id: 'settings', icon: 'gear', label: 'ตั้งค่าระบบ' },
-          { id: 'admins', icon: 'shield-star', label: 'ผู้ดูแล' } // เมนูใหม่
+      const navMenus = [ 
+          { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
+          { id: 'bills', icon: 'receipt', label: 'บิล' }, 
+          { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อ' },
+          { id: 'finance', icon: 'wallet', label: 'การเงิน' }, 
+          { id: 'history', icon: 'clipboard-text', label: 'ประวัติ' }, 
+          { id: 'students', icon: 'users', label: 'ผู้ใช้' }, 
+          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' },
+          { id: 'settings', icon: 'gear', label: 'ตั้งค่า' }
       ];
-
-      // กรองเมนู: ถ้าเป็น superadmin เห็นหมด, ถ้าเป็น admin ทั่วไป เห็นเฉพาะใน permissions
-      const navMenus = allMenus.filter(menu => {
-          if (!currentAdmin) return false;
-          if (currentAdmin.role === 'superadmin') return true;
-          if (menu.id === 'admins') return false; // แอดมินธรรมดาห้ามเห็นเมนูนี้
-          return currentAdmin.permissions.includes(menu.id);
-      });
 
       return (
         <div className="min-h-screen bg-background text-gray-800 font-sans md:flex relative">
@@ -5455,7 +5087,7 @@
 
           {/* === 🖥️ SIDEBAR (ย่อ/ขยายได้) === */}
           <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 h-screen sticky top-0 px-3 py-6 shadow-sm z-40 transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
-            <div className={`flex items-center gap-3 mb-6 px-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+            <div className={`flex items-center gap-3 mb-8 px-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
               <div className="bg-primary p-2.5 rounded-xl text-white shadow-lg shadow-blue-200 flex-shrink-0">
                 <Icon name="graduation-cap" weight="fill" size={24}/>
               </div>
@@ -5469,27 +5101,8 @@
                       </span>
                   </div>
               )}
-            </div>
-
-            {/* 🌟 4. เพิ่ม Dropdown เลือกชั้นปีสำหรับ Super Admin ตรงนี้ 🌟 */}
-            {currentAdmin?.role === 'superadmin' && (
-                <div className={`mb-4 px-2 ${isSidebarCollapsed ? 'hidden' : 'block'}`}>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">โหมดจัดการข้อมูล (Super Admin)</label>
-                    <div className="relative">
-                        <select 
-                            value={viewCohort} 
-                            onChange={(e) => setViewCohort(e.target.value)}
-                            className="w-full p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 outline-none focus:border-indigo-500 appearance-none shadow-sm cursor-pointer transition-colors hover:bg-indigo-100"
-                        >
-                            <option value="ALL">ดูทุกชั้นปี (ALL)</option>
-                            {availableCohorts.map(c => <option key={c} value={c}>เฉพาะปี {c}</option>)}
-                        </select>
-                        <Icon name="caret-down" className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none" weight="bold"/>
-                    </div>
-                </div>
-            )}
-            {/* 🌟 สิ้นสุดส่วนที่เพิ่ม 🌟 */}
-
+          </div>
+                      
             <nav className="flex flex-col gap-2 overflow-y-auto no-scrollbar flex-1">
               {navMenus.map(tab => {
                 const isActive = activeTab === tab.id;
@@ -5522,7 +5135,7 @@
             <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center md:hidden">
               <div className="flex items-center gap-2">
                 <div className="bg-primary p-2 rounded-lg text-white"><Icon name="graduation-cap" weight="fill" /></div>
-                <h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">MEDTECH</span></h1>
+                <h1 className="text-xl font-bold text-gray-800">Admin <span className="text-primary">MEDTECH67</span></h1>
               </div>
               <button onClick={() => fetchData(true)} className="p-2 text-gray-400 hover:text-primary transition rounded-full hover:bg-gray-100">
                 <Icon name="arrow-clockwise" size={24} className={loading ? "animate-spin" : ""} weight="bold" />
@@ -5542,23 +5155,13 @@
                         onViewBills={handleViewStudentBills}
                         onDeleteStudent={(stu) => setDeletingStudent(stu)} 
                     />
-                  )}
+                )}
                   {activeTab === 'history' && <HistoryView data={data} setSelectedBill={setEditingHistory} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
+                  {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
                   {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
                   {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
                   {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
-                  {activeTab === 'settings' && <SettingsView data={data} setData={setData} orderData={orderData} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleOrderSystem={handleToggleOrderSystem} onSaveMaintenanceMsg={handleSaveMaintenanceMsg} />}
-                  
-                  {/* ✅ เพิ่ม students={data.students} เข้าไปตรงนี้ */}
-                  {activeTab === 'admins' && currentAdmin?.role === 'superadmin' && (
-                      <AdminView 
-                          admins={adminList} 
-                          students={data.students} // <-- เพิ่มบรรทัดนี้
-                          onSaveAdmin={handleSaveAdmin} 
-                          onDeleteAdmin={handleDeleteAdminClick} 
-                          loading={processingAction === 'SAVE_ADMIN'} 
-                      />
-                  )}
+                  {activeTab === 'settings' && <SettingsView data={data} setData={setData} orderData={orderData} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleOrderSystem={handleToggleOrderSystem} />}
                 </>
               )}
             </main>
