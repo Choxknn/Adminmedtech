@@ -5194,6 +5194,29 @@
       const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
       const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
       const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
+
+      // ✅ 1. ฟังก์ชันบันทึกแอดมิน
+      const handleSaveAdmin = (formData) => {
+          setProcessingAction('SAVE_ADMIN');
+          // เรียก apiCall ที่เราสร้างไว้ตอนแรก
+          apiCall('saveAdmin', currentAdmin, formData)
+              .then((newAdminList) => {
+                  setAdminList(newAdminList); // อัปเดตรายชื่อในหน้าจอทันที
+                  finishAction(); // ทำการโชว์เครื่องหมายถูกเขียว
+              })
+              .catch((err) => {
+                  setErrorMessage(err.message);
+                  setIsErrorModalOpen(true);
+                  setProcessingAction(null);
+              });
+      };
+
+      // ✅ 2. ฟังก์ชันเตือนและลบแอดมิน
+      // เพิ่มลงไปรวมกับพวก handleDeleteProductClick
+      const handleDeleteAdminClick = (email) => { 
+          setDeleteTarget({ type: 'ADMIN', id: email }); 
+          setIsDeleteConfirmOpen(true); 
+      };
       
       const confirmDelete = () => { 
           if (!deleteTarget) return; 
@@ -5208,18 +5231,21 @@
           else if (targetType === 'STUDENT') setData(prev => ({ ...prev, students: prev.students.filter(s => s.id !== targetId) }));
           else if (targetType === 'QR') setData(prev => ({ ...prev, amount: { ...prev.amount, qrCodes: prev.amount.qrCodes.filter(q => q.url !== targetId) } }));
           else if (targetType === 'ANNOUNCEMENT') { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); }
+          else if (targetType === 'ADMIN') setAdminList(prev => prev.filter(a => a.email !== targetId)); // ✅ เพิ่มเคสอัปเดตจอทันที
           
           setTimeout(() => {
               const onError = (err) => { alert('Error: ' + err.message); setProcessingAction(null); };
               const onSuccess = () => finishAction();
               
-              if (targetType === 'BILL') apiCall('deleteBill', targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'HISTORY') apiCall('deleteHistory', targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'STUDENT') apiCall('deleteStudent', targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'QR') apiCall('deleteQrCode', targetId).then(onSuccess).catch(onError); 
-              else if (targetType === 'PRODUCT') apiCall('deleteProduct', targetId).then(onSuccess).catch(onError);
-              else if (targetType === 'ORDER') apiCall('deleteOrder', targetId).then(onSuccess).catch(onError);
-              else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', { type: 'text', text: '' }).then(onSuccess).catch(onError);
+              if (targetType === 'BILL') apiCall('deleteBill', currentAdmin, targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'HISTORY') apiCall('deleteHistory', currentAdmin, targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'STUDENT') apiCall('deleteStudent', currentAdmin, targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'QR') apiCall('deleteQrCode', currentAdmin, targetId).then(onSuccess).catch(onError); 
+              else if (targetType === 'PRODUCT') apiCall('deleteProduct', currentAdmin, targetId).then(onSuccess).catch(onError);
+              else if (targetType === 'ORDER') apiCall('deleteOrder', currentAdmin, targetId).then(onSuccess).catch(onError);
+              else if (targetType === 'ANNOUNCEMENT') apiCall('updateAnnouncementData', currentAdmin, { type: 'text', text: '' }).then(onSuccess).catch(onError);
+              else if (targetType === 'ADMIN') apiCall('deleteAdmin', currentAdmin, targetId).then(list => { setAdminList(list); onSuccess(); }).catch(onError); // ✅ สั่งลบจริง
+
               setDeleteTarget(null);
           }, 500);
       };
@@ -5272,6 +5298,7 @@
           if (deleteTarget?.type === 'PRODUCT') return "คุณต้องการลบสินค้านี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'ORDER') return "คุณต้องการลบออเดอร์นี้ใช่หรือไม่?"; 
           if (deleteTarget?.type === 'ANNOUNCEMENT') return "คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?";
+          if (deleteTarget?.type === 'ADMIN') return "คุณต้องการลบผู้ดูแลระบบคนนี้ใช่หรือไม่?"; // ✅ ข้อความยืนยัน
           return "คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้"; 
       };
 
@@ -5387,13 +5414,22 @@
                         onViewBills={handleViewStudentBills}
                         onDeleteStudent={(stu) => setDeletingStudent(stu)} 
                     />
-                )}
+                  )}
                   {activeTab === 'history' && <HistoryView data={data} setSelectedBill={setEditingHistory} onDeleteHistory={handleDeleteHistoryClick} onViewSlip={setViewingSlipUrl} />}
-                  {activeTab === 'students' && <StudentView data={data} setIsStudentModalOpen={setIsStudentModalOpen} setSelectedStudent={setSelectedStudent} handleDeleteStudent={handleDeleteStudentClick} onViewBills={handleViewStudentBills} />}
                   {activeTab === 'finance' && <FinanceView data={data} onSave={handleSaveFinance} onDelete={handleDeleteFinance} onViewImage={setViewingSlipUrl} loading={processingAction === 'SAVE_FINANCE'} />}
                   {activeTab === 'notifications' && <NotificationView students={data.students} data={data} onSendCustom={handleSendCustomNotification} onSendOverdue={handleSendOverdueNotification} onSendAccount={handleSendAccountNotification} onSendOverdueBatch={handleSendOverdueBatchNotification} loading={loading || !!processingAction} defaultSubTab={notificationSubTab} />}
                   {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
                   {activeTab === 'settings' && <SettingsView data={data} setData={setData} orderData={orderData} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleOrderSystem={handleToggleOrderSystem} />}
+                  
+                  {/* ✅ เพิ่ม AdminView ตรงนี้ (เฉพาะแอดมินระดับ Super ถึงจะเห็น) */}
+                  {activeTab === 'admins' && currentAdmin?.role === 'superadmin' && (
+                      <AdminView 
+                          admins={adminList} 
+                          onSaveAdmin={handleSaveAdmin} 
+                          onDeleteAdmin={handleDeleteAdminClick} 
+                          loading={processingAction === 'SAVE_ADMIN'} 
+                      />
+                  )}
                 </>
               )}
             </main>
