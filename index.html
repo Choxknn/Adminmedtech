@@ -120,36 +120,57 @@
     };
 
     // ==========================================
-    // 🔄 THE ADAPTER: เปลี่ยน apiCall ให้วิ่งเข้า Firestore แทน
+    // 🔄 THE ADAPTER: เพิ่มพารามิเตอร์ currentAdmin
     // ==========================================
-    const apiCall = async (action, ...args) => {
+    const apiCall = async (action, currentAdmin, ...args) => {
         try {
+            // ฟังก์ชันช่วยเช็คชั้นปี (ดูจาก 2 ตัวหน้าของรหัส)
+            const isStudentInCohort = (studentId, adminCohort) => {
+                if (adminCohort === 'ALL') return true;
+                const stuCohort = String(studentId).substring(0, 2);
+                return stuCohort === String(adminCohort);
+            };
+
             switch(action) {
                 // 📊 ดึงข้อมูลหลัก (Dashboard)
                 case 'getAllData': {
                     const data = { students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, announcement: '', systemStatus: 'OFF' };
                     
                     const usersSnap = await db.collection('users').get();
-                    usersSnap.forEach(doc => data.students.push({ id: doc.id, ...doc.data() }));
+                    usersSnap.forEach(doc => {
+                        // ✅ กรอง: ถ้าเป็น Superadmin ดึงหมด ถ้าเป็น Admin ธรรมดา ดึงเฉพาะ 2 ตัวหน้าที่ตรงกับ cohort
+                        if (currentAdmin && (currentAdmin.role === 'superadmin' || isStudentInCohort(doc.id, currentAdmin.cohort))) {
+                            data.students.push({ id: doc.id, ...doc.data() });
+                        }
+                    });
+
+                    // สร้าง Array เก็บรายชื่อ ID ของนักศึกษาที่แอดมินคนนี้เห็นได้
+                    const allowedStudentIds = data.students.map(s => s.id);
 
                     const billsSnap = await db.collectionGroup('bills').get();
                     billsSnap.forEach(doc => {
                         const b = doc.data(); 
-                        data.bills.push(b);
-                        if (!b.status || b.status === 'ค้างชำระ' || b.status === '') { 
-                            data.amount.totalUnpaid += (Number(b.amount || 0) - Number(b.discount || 0)); 
-                            data.amount.unpaidCount++; 
+                        // ✅ กรอง: เอาเฉพาะบิลที่เป็นของเด็กในสังกัด
+                        if (allowedStudentIds.includes(String(b.studentId))) {
+                            data.bills.push(b);
+                            if (!b.status || b.status === 'ค้างชำระ' || b.status === '') { 
+                                data.amount.totalUnpaid += (Number(b.amount || 0) - Number(b.discount || 0)); 
+                                data.amount.unpaidCount++; 
+                            }
                         }
                     });
-                  
 
                     const histSnap = await db.collectionGroup('history').get();
                     histSnap.forEach(doc => { 
                         const h = doc.data(); 
-                        data.history.push(h); 
-                        data.amount.totalBalance += Number(h.total || 0); 
+                        // ✅ กรอง: เอาเฉพาะประวัติที่เป็นของเด็กในสังกัด
+                        if (allowedStudentIds.includes(String(h.studentId))) {
+                            data.history.push(h); 
+                            data.amount.totalBalance += Number(h.total || 0); 
+                        }
                     });
 
+                    // (ข้อมูล Finance, Orders, Settings ดึงหมดเหมือนเดิม เพราะถือว่าเป็นของส่วนกลาง)
                     const finSnap = await db.collection('finance').doc('summary').collection('logs').get();
                     finSnap.forEach(doc => data.finance.push({ id: doc.id, ...doc.data() }));
 
@@ -203,6 +224,24 @@
                     }
                     await db.collection('config').doc('system').set({ announcement: finalValue }, { merge: true });
                     return finalValue;
+                }
+                
+                // ✅ เพิ่มเคสสำหรับจัดการ Admin (เฉพาะ Super Admin ถึงเรียกใช้ได้)
+                case 'getAdmins': {
+                    const admins = [];
+                    const snap = await db.collection('admins').get();
+                    snap.forEach(doc => admins.push({ email: doc.id, ...doc.data() }));
+                    return admins;
+                }
+                case 'saveAdmin': {
+                    const form = args[0];
+                    await db.collection('admins').doc(form.email).set(form, { merge: true });
+                    return await apiCall('getAdmins', currentAdmin);
+                }
+                case 'deleteAdmin': {
+                    const email = args[0];
+                    await db.collection('admins').doc(email).delete();
+                    return await apiCall('getAdmins', currentAdmin);
                 }
 
                 // 🧾 จัดการบิล
@@ -3119,6 +3158,152 @@
         );
     };
 
+    const AdminView = ({ admins, onSaveAdmin, onDeleteAdmin, loading }) => {
+        const [isModalOpen, setIsModalOpen] = useState(false);
+        const [editingAdmin, setEditingAdmin] = useState(null);
+        
+        // สิทธิ์ทั้งหมดที่มีในระบบ
+        const ALL_PERMISSIONS = [
+            { id: 'dashboard', label: 'แดชบอร์ด' },
+            { id: 'bills', label: 'จัดการบิล' },
+            { id: 'orders', label: 'สั่งซื้อสินค้า' },
+            { id: 'finance', label: 'บัญชี/การเงิน' },
+            { id: 'history', label: 'ประวัติชำระเงิน' },
+            { id: 'students', label: 'จัดการผู้ใช้' },
+            { id: 'notifications', label: 'แจ้งเตือน (LINE)' },
+            { id: 'settings', label: 'ตั้งค่าระบบ' }
+        ];
+
+        const [form, setForm] = useState({
+            email: '', name: '', password: '', role: 'admin', cohort: '67', permissions: ['dashboard']
+        });
+
+        const openAddModal = () => {
+            setEditingAdmin(null);
+            setForm({ email: '', name: '', password: '', role: 'admin', cohort: '67', permissions: ['dashboard'] });
+            setIsModalOpen(true);
+        };
+
+        const togglePermission = (permId) => {
+            setForm(prev => {
+                const newPerms = prev.permissions.includes(permId) 
+                    ? prev.permissions.filter(p => p !== permId) 
+                    : [...prev.permissions, permId];
+                return { ...prev, permissions: newPerms };
+            });
+        };
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSaveAdmin(form);
+            setIsModalOpen(false);
+        };
+
+        return (
+            <div className="space-y-5 pb-24 animate-fade-in">
+                <div className="flex justify-between items-center px-2">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800">จัดการผู้ดูแลระบบ</h2>
+                        <p className="text-xs text-gray-500">เพิ่ม/ลด และจัดการสิทธิ์ของแอดมิน</p>
+                    </div>
+                    <button onClick={openAddModal} className="px-4 py-2.5 bg-gray-800 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-gray-700 transition">
+                        <Icon name="user-plus" weight="bold"/> เพิ่มแอดมิน
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {admins.map((admin, idx) => (
+                        <div key={idx} className="bg-white p-5 rounded-2xl card-shadow border border-gray-100 flex flex-col justify-between">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${admin.role === 'superadmin' ? 'bg-gradient-to-tr from-purple-600 to-indigo-600' : 'bg-gradient-to-tr from-blue-500 to-cyan-500'}`}>
+                                        <Icon name={admin.role === 'superadmin' ? 'crown' : 'user-gear'} size={24} weight="fill"/>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800">{admin.name}</h3>
+                                        <p className="text-xs text-gray-500">{admin.email}</p>
+                                    </div>
+                                </div>
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${admin.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {admin.role === 'superadmin' ? 'Super Admin' : `Admin ปี ${admin.cohort}`}
+                                </span>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-1 mb-4">
+                                {admin.role === 'superadmin' ? (
+                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">เข้าถึงได้ทุกเมนู</span>
+                                ) : (
+                                    admin.permissions.map(p => {
+                                        const pName = ALL_PERMISSIONS.find(ap => ap.id === p)?.label || p;
+                                        return <span key={p} className="text-[10px] border border-gray-200 text-gray-600 px-2 py-0.5 rounded">{pName}</span>;
+                                    })
+                                )}
+                            </div>
+
+                            {admin.role !== 'superadmin' && (
+                                <div className="flex gap-2 border-t border-gray-50 pt-3">
+                                    <button onClick={() => { if(window.confirm('ยืนยันการลบแอดมิน?')) onDeleteAdmin(admin.email); }} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-xs font-bold hover:bg-red-100 transition flex justify-center items-center gap-1">
+                                        <Icon name="trash" weight="bold"/> ลบแอดมิน
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Modal เพิ่มแอดมิน */}
+                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มผู้ดูแลระบบ">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div><label className="text-xs font-bold text-gray-500 block mb-1">ชื่อแอดมิน</label><input type="text" required value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
+                        <div><label className="text-xs font-bold text-gray-500 block mb-1">อีเมลสำหรับ Login</label><input type="email" required value={form.email} onChange={e=>setForm({...form, email: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
+                        <div><label className="text-xs font-bold text-gray-500 block mb-1">รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)</label><input type="text" required value={form.password} onChange={e=>setForm({...form, password: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 block mb-1">ระดับสิทธิ์ (Role)</label>
+                                <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border outline-none">
+                                    <option value="admin">Admin ทั่วไป</option>
+                                    <option value="superadmin">Super Admin</option>
+                                </select>
+                            </div>
+                            {form.role !== 'superadmin' && (
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1">ดูแลข้อมูลของชั้นปี</label>
+                                    <select value={form.cohort} onChange={e=>setForm({...form, cohort: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border outline-none">
+                                        <option value="67">ปี 67</option>
+                                        <option value="68">ปี 68</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        {form.role !== 'superadmin' && (
+                            <div className="border-t border-gray-100 pt-3">
+                                <label className="text-xs font-bold text-gray-500 block mb-2">เมนูที่อนุญาตให้เข้าถึง</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {ALL_PERMISSIONS.map(perm => (
+                                        <label key={perm.id} className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition ${form.permissions.includes(perm.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:bg-gray-50 text-gray-600'}`}>
+                                            <input type="checkbox" checked={form.permissions.includes(perm.id)} onChange={() => togglePermission(perm.id)} className="hidden"/>
+                                            <div className={`w-4 h-4 rounded flex items-center justify-center border ${form.permissions.includes(perm.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                                {form.permissions.includes(perm.id) && <Icon name="check" size={10} className="text-white" weight="bold"/>}
+                                            </div>
+                                            <span className="text-xs font-bold">{perm.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <button type="submit" disabled={loading} className="w-full py-4 bg-gray-800 text-white font-bold rounded-xl shadow-lg mt-4">
+                            {loading ? 'กำลังบันทึก...' : 'สร้างบัญชีแอดมิน'}
+                        </button>
+                    </form>
+                </Modal>
+            </div>
+        );
+    };
+    
+
     // --- Helper: Image Gallery (รองรับ image, image2, image3...) ---
     const ProductImageGallery = ({ product }) => {
         const images = useMemo(() => {
@@ -4874,22 +5059,58 @@
       const [notifyEnabled, setNotifyEnabled] = useState(true); 
       const isFetchingRef = useRef(false);
 
-      // ✅ useEffect ตรวจสอบ Login อัตโนมัติด้วย Firebase Auth
+     // ✅ ตัวแปรใหม่สำหรับจัดการแอดมิน
+      const [currentAdmin, setCurrentAdmin] = useState(null);
+      const [adminList, setAdminList] = useState([]); // สำหรับ Super Admin ใช้จัดการคนอื่น
+
+      // ✅ 1. ตรวจสอบ Login และดึงสิทธิ์แอดมิน
       useEffect(() => {
-          const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
-              if (user) setIsLoggedIn(true);
-              else setIsLoggedIn(false);
+          const unsubscribe = firebase.auth().onAuthStateChanged(async (user) => {
+              if (user) {
+                  try {
+                      // ไปค้นหาใน Collection 'admins' ว่ามีอีเมลนี้ไหม
+                      const adminDoc = await db.collection('admins').doc(user.email).get();
+                      
+                      if (adminDoc.exists) {
+                          const adminData = adminDoc.data();
+                          // เซ็ตข้อมูลแอดมินปัจจุบัน
+                          setCurrentAdmin({ email: user.email, ...adminData });
+                          setIsLoggedIn(true);
+                      } else {
+                          // ถ้าเป็นอีเมลที่ไม่มีในตาราง admins ให้เด้งออก
+                          alert('บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้ระบบหลังบ้าน');
+                          firebase.auth().signOut();
+                          setIsLoggedIn(false);
+                      }
+                  } catch (error) {
+                      console.error("Error fetching admin role:", error);
+                      alert('เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์');
+                      firebase.auth().signOut();
+                      setIsLoggedIn(false);
+                  }
+              } else {
+                  setIsLoggedIn(false);
+                  setCurrentAdmin(null);
+              }
               setIsAuthChecking(false);
           });
           return () => unsubscribe();
       }, []);
 
-      // ✅ แก้ไขให้ดึงข้อมูลก็ต่อเมื่อล็อกอินแล้ว
+      // ✅ 2. ดึงข้อมูลครั้งแรกสุด "ครั้งเดียว" ตอนที่ล็อกอินสำเร็จ (แก้ปัญหาหน้าจอค้าง)
       useEffect(() => { 
-        if (isLoggedIn) {
+        if (isLoggedIn && currentAdmin) {
             fetchData(true); 
             fetchOrderData(); 
+            fetchAdmins(); // ดึงรายชื่อแอดมิน
+        }
+      }, [isLoggedIn, currentAdmin]);
+
+      // ✅ 3. ระบบ Auto-refresh เพื่อดึงข้อมูลเบื้องหลังทุกๆ 5 วินาที
+      useEffect(() => {
+        if (isLoggedIn) {
             const intervalId = setInterval(() => { 
+                // ดึงเงียบๆ (fetchData(false)) เฉพาะตอนที่แอดมินไม่ได้ทำรายการอะไรอยู่
                 if (!processingAction && !isDeleteConfirmOpen && !isEditing && !isCreateModalOpen) { 
                     fetchData(false); 
                     fetchOrderData(); 
@@ -4901,11 +5122,11 @@
 
       useEffect(() => { if (!selectedBill) setIsEditing(false); else setNotifyEnabled(true); }, [selectedBill]);
 
+      // ✅ 4. ปรับปรุง finishAction ไม่ให้ไปดึงข้อมูลซ้ำซ้อนอีก (เพราะอัปเดต State ให้แล้ว)
       const finishAction = () => {
           setProcessingAction(null);
           setShowSuccess(true);
-          fetchData(false);
-          fetchOrderData();
+          // (เอา fetchData และ fetchOrderData ออก เพื่อลดอาการค้างหลังทำรายการเสร็จ)
           setTimeout(() => setShowSuccess(false), 1500);
       };
 
@@ -4943,7 +5164,8 @@
         isFetchingRef.current = true; 
         if (showSpinner) setLoading(true); 
 
-        apiCall('getAllData').then(response => {
+        // ✅ เติม currentAdmin ลงไปตรงนี้
+        apiCall('getAllData', currentAdmin).then(response => {
             if (!processingAction && !isEditing) { setData(response); } 
             if (showSpinner) { setLoading(false); } 
             isFetchingRef.current = false;
@@ -4954,8 +5176,16 @@
       };
       
       const fetchOrderData = () => { 
-          apiCall('getOrderData').then(res => { if (!processingAction) setOrderData(res); }).catch(err => console.error(err)); 
+          // ✅ เติม currentAdmin ลงไปตรงนี้
+          apiCall('getOrderData', currentAdmin).then(res => { if (!processingAction) setOrderData(res); }).catch(err => console.error(err)); 
       };
+
+      // ถ้าเป็น Super Admin ให้ดึงรายชื่อแอดมินมาด้วย
+      const fetchAdmins = () => {
+          if (currentAdmin && currentAdmin.role === 'superadmin') {
+              apiCall('getAdmins', currentAdmin).then(res => setAdminList(res)).catch(err => console.error(err));
+          }
+      }
 
       // Actions ...
       const handleSaveFinance = (formData) => { setProcessingAction('SAVE_FINANCE'); apiCall('saveFinanceLog', formData).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
@@ -5061,7 +5291,7 @@
       if (!isLoggedIn) {
           return <LoginScreen />;
       }
-      const navMenus = [ 
+      const allMenus = [ 
           { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
           { id: 'bills', icon: 'receipt', label: 'บิล' }, 
           { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อ' },
@@ -5069,8 +5299,17 @@
           { id: 'history', icon: 'clipboard-text', label: 'ประวัติ' }, 
           { id: 'students', icon: 'users', label: 'ผู้ใช้' }, 
           { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' },
-          { id: 'settings', icon: 'gear', label: 'ตั้งค่า' }
+          { id: 'settings', icon: 'gear', label: 'ตั้งค่าระบบ' },
+          { id: 'admins', icon: 'shield-star', label: 'ผู้ดูแล' } // เมนูใหม่
       ];
+
+      // กรองเมนู: ถ้าเป็น superadmin เห็นหมด, ถ้าเป็น admin ทั่วไป เห็นเฉพาะใน permissions
+      const navMenus = allMenus.filter(menu => {
+          if (!currentAdmin) return false;
+          if (currentAdmin.role === 'superadmin') return true;
+          if (menu.id === 'admins') return false; // แอดมินธรรมดาห้ามเห็นเมนูนี้
+          return currentAdmin.permissions.includes(menu.id);
+      });
 
       return (
         <div className="min-h-screen bg-background text-gray-800 font-sans md:flex relative">
