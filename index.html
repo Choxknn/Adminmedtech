@@ -365,7 +365,6 @@
 
                 // 🧑‍🎓 จัดการนักศึกษา
                 case 'createStudent': 
-                // ✅ แก้ไขข้อมูลนักศึกษา
                 case 'editStudent': {
                     const studentData = args[0];
                     const originalId = studentData.originalId;
@@ -375,38 +374,28 @@
                     delete updateData.originalId;
 
                     // 2. จัดการกับฟิลด์ที่อาจจะเป็น undefined
-                    // ถ้า password เป็น undefined ให้ลบฟิลด์นี้ออกจากการอัปเดต
-                    // (เพื่อไม่ให้ไปทับรหัสผ่านเดิมในฐานข้อมูล ถ้าแอดมินไม่ได้แก้ไขรหัส)
                     if (updateData.password === undefined) {
                         delete updateData.password;
                     }
 
-                    // 3. ถ้ามีการแก้ไขรหัสนักศึกษา (ID เปลี่ยน)
-                    if (originalId !== updateData.id) {
-                        // ดึงข้อมูลเดิมมา
+                    // 3. แยกเคส: ถ้าเป็นการแก้ไขแล้ว "เปลี่ยนรหัสนักศึกษา"
+                    if (originalId && originalId !== updateData.id) {
                         const oldDoc = await db.collection('users').doc(originalId).get();
                         if (oldDoc.exists) {
                             const oldData = oldDoc.data();
-                            
-                            // รวมข้อมูลเดิมกับข้อมูลใหม่ (โดยข้อมูลใหม่จะทับข้อมูลเดิม)
                             const mergedData = { ...oldData, ...updateData };
-                            
-                            // สร้าง Document ใหม่ด้วย ID ใหม่
                             await db.collection('users').doc(updateData.id).set(mergedData);
-                            
-                            // ลบ Document เก่าทิ้ง
-                            await db.collection('users').doc(originalId).delete();
-                            
-                            // ⚠️ หมายเหตุ: ถ้ามีการเปลี่ยนรหัสนักศึกษา และนักศึกษาคนนั้นมีข้อมูลในคอลเล็กชันอื่นๆ ด้วย (เช่น bills, payments) 
-                            // คุณอาจจะต้องเขียนโค้ดเพิ่มเพื่อไปอัปเดต studentId ในคอลเล็กชันเหล่านั้นให้ตรงกันด้วยครับ
+                            await db.collection('users').doc(originalId).delete(); // ลบข้อมูลรหัสเก่าทิ้ง
                         }
                     } else {
-                        // 4. ถ้าไม่ได้แก้ไขรหัสนักศึกษา (ID เหมือนเดิม) ให้อัปเดตตามปกติ
-                        await db.collection('users').doc(updateData.id).set(updateData, { merge: true }); // ใช้ merge: true เพื่ออัปเดตเฉพาะฟิลด์ที่มีการเปลี่ยนแปลง
+                        // 4. ถ้าเป็นการ "สร้างใหม่" หรือ "แก้ไขแต่ไม่ได้เปลี่ยนรหัส"
+                        await db.collection('users').doc(updateData.id).set(updateData, { merge: true });
                     }
 
-                    return updateData;
+                    // 5. โหลดข้อมูลใหม่ทั้งหมดกลับไปให้หน้าจอ (สำคัญมาก: เพื่อให้จอยอมรีเฟรชข้อมูล)
+                    return await apiCall('getAllData', currentAdmin);
                 }
+                
                 case 'deleteStudent': { 
                     await db.collection('users').doc(String(args[0])).delete(); 
                     return await apiCall('getAllData'); 
