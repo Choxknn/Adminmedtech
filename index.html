@@ -119,34 +119,36 @@
         }
     };
 
-    // ==========================================
-    // 🔄 THE ADAPTER: เพิ่มพารามิเตอร์ currentAdmin และแยกข้อมูลตามชั้นปี
+   // ==========================================
+    // 🔄 THE ADAPTER: อัปเดตกรองข้อมูลตาม Dropdown ของ Super Admin
     // ==========================================
     const apiCall = async (action, currentAdmin, ...args) => {
         try {
-            // ✅ ใช้ effectiveCohort (ชั้นปีที่กำลังเลือกดูอยู่) แทนการเช็ค Role ตรงๆ
-            const getCohortSuffix = (admin) => admin?.effectiveCohort || 'ALL';
+            // ✅ ดึงชั้นปีที่กำลังเลือกดูอยู่ (ถ้าเป็น Super Admin จะมาจาก Dropdown, ถ้าปกติมาจากสิทธิ์)
+            const activeCohort = currentAdmin?.effectiveCohort || currentAdmin?.cohort || 'ALL';
 
-            const isStudentInCohort = (studentId, adminCohort) => {
-                if (!adminCohort || adminCohort === 'ALL') return true;
+            // ✅ ฟังก์ชันเช็คชั้นปี (ยึดตาม activeCohort เป็นหลัก ตัดการเช็ค role ออก)
+            const isStudentInCohort = (studentId) => {
+                if (activeCohort === 'ALL') return true;
                 const stuCohort = String(studentId).substring(0, 2);
-                return stuCohort === String(adminCohort);
+                return stuCohort === String(activeCohort);
             };
 
-            const isDocInCohort = (docData, adminCohort) => {
-                if (!adminCohort || adminCohort === 'ALL') return true;
-                if (docData.cohort) return String(docData.cohort) === String(adminCohort);
+            const isDocInCohort = (docData) => {
+                if (activeCohort === 'ALL') return true;
+                if (docData.cohort) return String(docData.cohort) === String(activeCohort);
                 return true; 
             };
 
             switch(action) {
-                // 📊 ดึงข้อมูลหลัก (Dashboard).
+                // 📊 ดึงข้อมูลหลัก (Dashboard)
                 case 'getAllData': {
                     const data = { students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, announcement: '', systemStatus: 'OFF' };
                     
                     const usersSnap = await db.collection('users').get();
                     usersSnap.forEach(doc => {
-                        if (currentAdmin && (currentAdmin.role === 'superadmin' || isStudentInCohort(doc.id, currentAdmin.cohort))) {
+                        // ✅ เช็คแค่ว่ารหัสนักศึกษา ตรงกับปีที่เลือกดูอยู่ไหม
+                        if (isStudentInCohort(doc.id)) {
                             data.students.push({ id: doc.id, ...doc.data() });
                         }
                     });
@@ -174,35 +176,31 @@
                         }
                     });
 
-                    // 💰 กรองการเงินแยกตามชั้นปี
                     const finSnap = await db.collection('finance').doc('summary').collection('logs').get();
                     finSnap.forEach(doc => {
                         const finData = doc.data();
-                        if (isDocInCohort(finData, currentAdmin?.cohort)) {
+                        if (isDocInCohort(finData)) {
                             data.finance.push({ id: doc.id, ...finData });
                         }
                     });
 
-                    // ⚙️ ดึงข้อมูลตั้งค่า (แยกตามชั้นปี)
                     const sysSnap = await db.collection('config').doc('system').get();
                     if(sysSnap.exists) { 
                         const sysData = sysSnap.data();
-                        const suffix = getCohortSuffix(currentAdmin);
+                        const suffix = activeCohort;
                         
-                        // ถ้าไม่มีของชั้นปีตัวเอง ให้ไปดึงของ ALL หรือค่า default มาแทน
                         data.systemStatus = sysData[`maintenance_${suffix}`] || sysData.maintenance || 'OFF'; 
                         data.announcement = sysData[`announcement_${suffix}`] || sysData.announcement || ''; 
                         data.config = { maintenanceMsg: sysData[`maintenanceMsg_${suffix}`] || sysData.maintenanceMsg || '' };
                     }
 
-                    // 💳 ดึง QR Code (แยกตามชั้นปี)
-                    const qrDocName = currentAdmin?.role !== 'superadmin' && currentAdmin?.cohort ? `qrMap_${currentAdmin.cohort}` : 'qrMap_ALL';
+                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
                     const qrSnap = await db.collection('config').doc(qrDocName).get();
                     if(qrSnap.exists && qrSnap.data().codes) { 
                         data.amount.qrCodes = qrSnap.data().codes; 
                         if(data.amount.qrCodes.length > 0) data.amount.qrUrl = data.amount.qrCodes[data.amount.qrCodes.length-1].url; 
-                    } else {
-                        // ถ้าไม่มี ให้ลองดึงจาก qrMap (ของเดิม)
+                    } else if (activeCohort !== 'ALL') {
+                        // ดึงของส่วนกลางมาโชว์ถ้าระดับชั้นพึ่งสร้างใหม่และยังไม่มี QR
                         const oldQrSnap = await db.collection('config').doc('qrMap').get();
                         if(oldQrSnap.exists && oldQrSnap.data().codes) {
                             data.amount.qrCodes = oldQrSnap.data().codes;
@@ -218,44 +216,38 @@
                     const sysSnap = await db.collection('config').doc('system').get();
                     if(sysSnap.exists) {
                         const sysData = sysSnap.data();
-                        const suffix = getCohortSuffix(currentAdmin);
-                        orderData.systemStatus = sysData[`orderSystem_${suffix}`] || sysData.orderSystem || 'OFF';
+                        orderData.systemStatus = sysData[`orderSystem_${activeCohort}`] || sysData.orderSystem || 'OFF';
                     }
 
-                    // 📦 กรองสินค้าแยกตามชั้นปี
                     const prodSnap = await db.collection('products').get();
                     prodSnap.forEach(doc => {
                         const pData = doc.data();
-                        if (isDocInCohort(pData, currentAdmin?.cohort)) {
+                        if (isDocInCohort(pData)) {
                             orderData.products.push({ id: doc.id, ...pData });
                         }
                     });
 
-                    // 🛍️ กรองออเดอร์ตามรหัสนักศึกษา (เช่นปี 67 เห็นแค่ออเดอร์เด็กปี 67)
                     const ordersSnap = await db.collectionGroup('orders').get();
                     ordersSnap.forEach(doc => {
                         const oData = doc.data();
-                        if (isStudentInCohort(oData.studentId, currentAdmin?.cohort)) {
+                        if (isStudentInCohort(oData.studentId)) {
                             orderData.orders.push(oData);
                         }
                     });
                     return orderData;
                 }
 
-                // ⚙️ เซฟตั้งค่าระบบ (เซฟแยกตามชั้นปีอัตโนมัติ)
+                // ⚙️ ตั้งค่าระบบ
                 case 'toggleMaintenance': { 
-                    const suffix = getCohortSuffix(currentAdmin);
-                    await db.collection('config').doc('system').set({ [`maintenance_${suffix}`]: args[0] }, { merge: true }); 
+                    await db.collection('config').doc('system').set({ [`maintenance_${activeCohort}`]: args[0] }, { merge: true }); 
                     return await apiCall('getAllData', currentAdmin); 
                 }
                 case 'saveMaintenanceMsg': { 
-                    const suffix = getCohortSuffix(currentAdmin);
-                    await db.collection('config').doc('system').set({ [`maintenanceMsg_${suffix}`]: args[0] }, { merge: true }); 
+                    await db.collection('config').doc('system').set({ [`maintenanceMsg_${activeCohort}`]: args[0] }, { merge: true }); 
                     return await apiCall('getAllData', currentAdmin); 
                 }
                 case 'toggleOrderSystem': { 
-                    const suffix = getCohortSuffix(currentAdmin);
-                    await db.collection('config').doc('system').set({ [`orderSystem_${suffix}`]: args[0] ? 'ON' : 'OFF' }, { merge: true }); 
+                    await db.collection('config').doc('system').set({ [`orderSystem_${activeCohort}`]: args[0] ? 'ON' : 'OFF' }, { merge: true }); 
                     return await apiCall('getOrderData', currentAdmin); 
                 }
                 case 'updateAnnouncementData': {
@@ -268,9 +260,7 @@
                     } else if (payload.type === 'image') {
                         finalValue = '';
                     }
-                    
-                    const suffix = getCohortSuffix(currentAdmin);
-                    await db.collection('config').doc('system').set({ [`announcement_${suffix}`]: finalValue }, { merge: true });
+                    await db.collection('config').doc('system').set({ [`announcement_${activeCohort}`]: finalValue }, { merge: true });
                     return finalValue;
                 }
                 
@@ -283,10 +273,26 @@
                 }
                 case 'saveAdmin': {
                     const form = args[0];
-                    await callGAS('saveAdminAuth', { email: form.email, password: form.password });
+                    const adminRef = db.collection('admins').doc(form.email);
+                    const adminSnap = await adminRef.get();
+
+                    // ✅ ถ้ายังไม่มีในตาราง admins (คือการสร้างใหม่) ให้ไปสร้างบัญชี Auth
+                    if (!adminSnap.exists) {
+                        try {
+                            await callGAS('saveAdminAuth', { email: form.email, password: form.password });
+                        } catch (err) {
+                            // ถ้าพยายามสร้างแล้วบอกว่ามีอีเมลนี้ในระบบ Auth แล้ว ก็ปล่อยผ่านไปเลย
+                            if (!String(err.message).includes('EMAIL_EXISTS')) {
+                                throw err;
+                            }
+                        }
+                    }
+
+                    // ✅ บันทึกข้อมูลและสิทธิ์ลง Firestore (ไม่เอารหัสผ่านลงไป)
                     const dataToSave = { ...form };
                     delete dataToSave.password;
-                    await db.collection('admins').doc(form.email).set(dataToSave, { merge: true });
+
+                    await adminRef.set(dataToSave, { merge: true });
                     return await apiCall('getAdmins', currentAdmin);
                 }
                 case 'deleteAdmin': {
@@ -337,12 +343,7 @@
                         }
 
                         const netTotal = (Number(billData.amount) || 0) - (Number(billData.discount) || 0) + fine;
-
-                        const histData = { 
-                            ...billData, 
-                            payDate: new Date().toISOString(), 
-                            total: netTotal 
-                        };
+                        const histData = { ...billData, payDate: new Date().toISOString(), total: netTotal };
                         await db.collection('users').doc(String(studentId)).collection('history').doc(String(billId)).set(histData);
                     }
 
@@ -431,12 +432,11 @@
                             const oldData = oldDoc.data();
                             const mergedData = { ...oldData, ...updateData };
                             await db.collection('users').doc(updateData.id).set(mergedData);
-                            await db.collection('users').doc(originalId).delete();
+                            await db.collection('users').doc(originalId).delete(); 
                         }
                     } else {
                         await db.collection('users').doc(updateData.id).set(updateData, { merge: true });
                     }
-
                     return await apiCall('getAllData', currentAdmin);
                 }
                 case 'deleteStudent': { 
@@ -455,8 +455,8 @@
                     if(form.isSlipDeleted) slipUrl = '';
 
                     const logId = String(form.id || `FIN-${Date.now()}`); 
-                    // ✅ แทรก Cohort เข้าไปตอนเซฟด้วย
-                    const finData = { ...form, id: logId, receiptUrl: receiptUrl, slipUrl: slipUrl, cohort: currentAdmin?.cohort || 'ALL' };
+                    // ✅ บันทึก cohort เข้าไปด้วย
+                    const finData = { ...form, id: logId, receiptUrl: receiptUrl, slipUrl: slipUrl, cohort: activeCohort };
                     delete finData.receiptFile; delete finData.slipFile; delete finData.isReceiptDeleted; delete finData.isSlipDeleted;
                     
                     await db.collection('finance').doc('summary').collection('logs').doc(logId).set(finData);
@@ -484,15 +484,10 @@
                     }
 
                     const prodId = String(form.id || `P-${Date.now()}`); 
-                    // ✅ แทรก Cohort เข้าไปตอนเซฟด้วย
+                    // ✅ บันทึก cohort เข้าไปด้วย
                     const prodData = { 
-                        id: prodId,
-                        name: form.name,
-                        price: form.price,
-                        options: form.options,
-                        status: form.status,
-                        stock: form.stock,
-                        cohort: currentAdmin?.cohort || 'ALL'
+                        id: prodId, name: form.name, price: form.price, options: form.options, status: form.status, stock: form.stock,
+                        cohort: activeCohort
                     };
                     
                     allMainUrls.forEach((url, i) => {
@@ -589,8 +584,7 @@
                     const [b64, mime, fName, amt, oldUrl] = args; 
                     const newUrl = await callGAS('uploadImage', { base64: b64, fileName: fName });
                     
-                    // ✅ บันทึกแยกตามชั้นปี
-                    const qrDocName = currentAdmin?.role !== 'superadmin' && currentAdmin?.cohort ? `qrMap_${currentAdmin.cohort}` : 'qrMap';
+                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
                     
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
@@ -606,8 +600,7 @@
                 case 'updateQrCode': {
                     const [oldUrl, newUrl, newAmount] = args; 
                     
-                    // ✅ บันทึกแยกตามชั้นปี
-                    const qrDocName = currentAdmin?.role !== 'superadmin' && currentAdmin?.cohort ? `qrMap_${currentAdmin.cohort}` : 'qrMap';
+                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
                     
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
@@ -620,8 +613,7 @@
                     return (await apiCall('getAllData', currentAdmin)).amount;
                 }
                 case 'deleteQrCode': {
-                    // ✅ ลบแยกตามชั้นปี
-                    const qrDocName = currentAdmin?.role !== 'superadmin' && currentAdmin?.cohort ? `qrMap_${currentAdmin.cohort}` : 'qrMap';
+                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
                     
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
@@ -630,7 +622,6 @@
                     return (await apiCall('getAllData', currentAdmin)).amount;
                 }
 
-                // ... (เคส Auth อื่นๆ เหมือนเดิม) ...
                 case 'changeAdminPassword': {
                     const [currentPassword, newPassword] = args;
                     const user = firebase.auth().currentUser;
@@ -3316,15 +3307,16 @@
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 block mb-1">
-                                {editingAdmin ? "รหัสผ่านใหม่ (เว้นว่างหากไม่ต้องการเปลี่ยน)" : "รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)"}
+                                {editingAdmin ? "รหัสผ่าน " : "รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)"}
                             </label>
                             <input 
                                 type="text" 
-                                required={!editingAdmin} /* บังคับกรอกเฉพาะตอนเพิ่มใหม่ */
-                                value={form.password} 
+                                required={!editingAdmin} 
+                                value={form.password || ''} 
                                 onChange={e=>setForm({...form, password: e.target.value})} 
-                                className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none text-sm font-medium"
-                                placeholder={editingAdmin ? "ปล่อยว่างไว้เพื่อใช้รหัสผ่านเดิม..." : "ตั้งรหัสผ่านเบื้องต้น..."}
+                                disabled={!!editingAdmin} /* ล็อคช่องเมื่อกดแก้ไข */
+                                className={`w-full p-3 rounded-xl border outline-none text-sm font-medium ${editingAdmin ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-gray-50 focus:border-blue-500 text-gray-700'}`}
+                                placeholder={editingAdmin ? "หากต้องการเปลี่ยนรหัส ลบและเพิ่มบัญชีใหม่" : "ตั้งรหัสผ่านเบื้องต้น..."}
                             />
                         </div>
                         
