@@ -235,12 +235,28 @@
                 }
                 case 'saveAdmin': {
                     const form = args[0];
-                    await db.collection('admins').doc(form.email).set(form, { merge: true });
+                    
+                    // ✅ 1. สั่ง GAS ให้ไปสร้าง/อัปเดต บัญชีใน Firebase Auth ก่อน
+                    await callGAS('saveAdminAuth', { email: form.email, password: form.password });
+
+                    // ✅ 2. บันทึกข้อมูลลง Firestore 
+                    // (ทำสำเนาแล้วลบฟิลด์ password ออก เพื่อไม่ให้รหัสผ่านถูกมองเห็นในฐานข้อมูล Firestore)
+                    const dataToSave = { ...form };
+                    delete dataToSave.password;
+
+                    await db.collection('admins').doc(form.email).set(dataToSave, { merge: true });
                     return await apiCall('getAdmins', currentAdmin);
                 }
+                
                 case 'deleteAdmin': {
                     const email = args[0];
+                    
+                    // 1. สั่ง GAS ไปค้นหาและลบบัญชีจาก Firebase Auth
+                    await callGAS('deleteAdminAuth', { email: email });
+                    
+                    // 2. ลบข้อมูลสิทธิ์ออกจาก Firestore
                     await db.collection('admins').doc(email).delete();
+                    
                     return await apiCall('getAdmins', currentAdmin);
                 }
 
