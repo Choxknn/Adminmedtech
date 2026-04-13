@@ -3682,7 +3682,10 @@
     };
 
     // --- Settings View ---
-    const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage, onSaveMaintenanceMsg }) => { 
+    const SettingsView = ({ data, setData, orderData, setAnnounceForm, setIsAnnounceModalOpen, onOpenQrManager, onEditQr, onToggleOrderSystem, processingAction, setProcessingAction, onViewImage, onSaveMaintenanceMsg }) => {
+        // ✅ 1. เพิ่มบรรทัดนี้กลับมา เพื่อกำหนดค่า isMaintenance ให้หน้าจอรู้ว่าเปิดระบบอยู่ไหม
+        const isMaintenance = data.systemStatus === 'ON'; 
+
         const [mMsg, setMMsg] = useState(data.config?.maintenanceMsg || '');
         const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', targetStatus: '' });
         const [successModal, setSuccessModal] = useState(false);
@@ -3703,7 +3706,10 @@
         const confirmToggleMaintenance = () => {
             setProcessingAction('TOGGLING_SYSTEM');
             setConfirmModal({ ...confirmModal, isOpen: false });
-            apiCall('toggleMaintenance', confirmModal.targetStatus).then((newData) => { setData(newData); setProcessingAction(null); setSuccessModal(true); }).catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
+            // ใช้ apiCall ผ่าน App ที่ผูก Context ไว้แล้ว
+            apiCall('toggleMaintenance', currentAdmin, confirmModal.targetStatus)
+              .then((newData) => { setData(newData); setProcessingAction(null); setSuccessModal(true); })
+              .catch((err) => { setProcessingAction(null); alert("เกิดข้อผิดพลาด: " + err.message); });
         };
 
         const handleConfirm = () => {
