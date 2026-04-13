@@ -3158,9 +3158,20 @@
         );
     };
 
-    const AdminView = ({ admins, onSaveAdmin, onDeleteAdmin, loading }) => {
+    // ✅ เพิ่ม props students เข้ามาเพื่อดึงข้อมูลชั้นปี
+    const AdminView = ({ admins, students, onSaveAdmin, onDeleteAdmin, loading }) => {
         const [isModalOpen, setIsModalOpen] = useState(false);
         const [editingAdmin, setEditingAdmin] = useState(null);
+
+        // ✅ คำนวณชั้นปีอัตโนมัติจาก 2 ตัวหน้าของรหัสนักศึกษา
+        const availableCohorts = useMemo(() => {
+            if (!students || students.length === 0) return ['67']; // ค่าเริ่มต้นถ้ายังไม่มีนักศึกษา
+            // ดึง 2 ตัวหน้า กรองเฉพาะที่เป็นตัวเลข
+            const cohorts = students.map(s => String(s.id).substring(0, 2)).filter(c => c.length === 2 && !isNaN(c));
+            // ตัดตัวซ้ำ และเรียงลำดับจากปีใหม่ไปปีเก่า
+            const uniqueCohorts = [...new Set(cohorts)].sort((a, b) => b - a);
+            return uniqueCohorts.length > 0 ? uniqueCohorts : ['67'];
+        }, [students]);
         
         // สิทธิ์ทั้งหมดที่มีในระบบ
         const ALL_PERMISSIONS = [
@@ -3175,12 +3186,25 @@
         ];
 
         const [form, setForm] = useState({
-            email: '', name: '', password: '', role: 'admin', cohort: '67', permissions: ['dashboard']
+            email: '', name: '', password: '', role: 'admin', cohort: availableCohorts[0], permissions: ['dashboard']
         });
 
-        const openAddModal = () => {
-            setEditingAdmin(null);
-            setForm({ email: '', name: '', password: '', role: 'admin', cohort: '67', permissions: ['dashboard'] });
+        // ✅ ปรับฟังก์ชันให้ใช้ได้ทั้ง เพิ่ม และ แก้ไข
+        const openModal = (admin = null) => {
+            if (admin) {
+                setEditingAdmin(admin);
+                setForm({ 
+                    email: admin.email, 
+                    name: admin.name, 
+                    password: '', // เว้นว่างไว้ ไม่ต้องโชว์รหัสเดิม
+                    role: admin.role || 'admin', 
+                    cohort: admin.cohort || availableCohorts[0], 
+                    permissions: admin.permissions || ['dashboard'] 
+                });
+            } else {
+                setEditingAdmin(null);
+                setForm({ email: '', name: '', password: '', role: 'admin', cohort: availableCohorts[0], permissions: ['dashboard'] });
+            }
             setIsModalOpen(true);
         };
 
@@ -3195,7 +3219,12 @@
 
         const handleSubmit = (e) => {
             e.preventDefault();
-            onSaveAdmin(form);
+            // ถ้าระบุรหัสผ่านใหม่ค่อยส่งไปอัปเดต ถ้าเว้นว่างให้ลบฟิลด์ทิ้ง (ไม่แก้รหัส)
+            const submitData = { ...form };
+            if (editingAdmin && !submitData.password) {
+                delete submitData.password;
+            }
+            onSaveAdmin(submitData);
             setIsModalOpen(false);
         };
 
@@ -3206,62 +3235,90 @@
                         <h2 className="text-xl font-bold text-gray-800">จัดการผู้ดูแลระบบ</h2>
                         <p className="text-xs text-gray-500">เพิ่ม/ลด และจัดการสิทธิ์ของแอดมิน</p>
                     </div>
-                    <button onClick={openAddModal} className="px-4 py-2.5 bg-gray-800 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-gray-700 transition">
+                    {/* ✅ เปลี่ยนเป็นเรียกใช้ openModal() แบบไม่มีพารามิเตอร์ */}
+                    <button onClick={() => openModal()} className="px-4 py-2.5 bg-gray-800 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-gray-700 transition shadow-md">
                         <Icon name="user-plus" weight="bold"/> เพิ่มแอดมิน
                     </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {admins.map((admin, idx) => (
-                        <div key={idx} className="bg-white p-5 rounded-2xl card-shadow border border-gray-100 flex flex-col justify-between">
+                        <div key={idx} className="bg-white p-5 rounded-2xl card-shadow border border-gray-100 flex flex-col h-full relative">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${admin.role === 'superadmin' ? 'bg-gradient-to-tr from-purple-600 to-indigo-600' : 'bg-gradient-to-tr from-blue-500 to-cyan-500'}`}>
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${admin.role === 'superadmin' ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-md' : 'bg-gradient-to-tr from-blue-500 to-cyan-500 shadow-md'}`}>
                                         <Icon name={admin.role === 'superadmin' ? 'crown' : 'user-gear'} size={24} weight="fill"/>
                                     </div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800">{admin.name}</h3>
-                                        <p className="text-xs text-gray-500">{admin.email}</p>
+                                    <div className="min-w-0 pr-2">
+                                        <h3 className="font-bold text-gray-800 truncate">{admin.name}</h3>
+                                        <p className="text-xs text-gray-500 truncate">{admin.email}</p>
                                     </div>
                                 </div>
-                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${admin.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <span className={`flex-shrink-0 px-2 py-1 rounded-md text-[10px] font-bold shadow-sm ${admin.role === 'superadmin' ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`}>
                                     {admin.role === 'superadmin' ? 'Super Admin' : `Admin ปี ${admin.cohort}`}
                                 </span>
                             </div>
                             
-                            <div className="flex flex-wrap gap-1 mb-4">
+                            <div className="flex flex-wrap gap-1.5 mb-6">
                                 {admin.role === 'superadmin' ? (
-                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">เข้าถึงได้ทุกเมนู</span>
+                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2.5 py-1 rounded font-bold border border-gray-200 shadow-sm"><Icon name="star" weight="fill" className="inline mr-1 text-amber-500"/>เข้าถึงได้ทุกเมนู</span>
                                 ) : (
                                     admin.permissions.map(p => {
                                         const pName = ALL_PERMISSIONS.find(ap => ap.id === p)?.label || p;
-                                        return <span key={p} className="text-[10px] border border-gray-200 text-gray-600 px-2 py-0.5 rounded">{pName}</span>;
+                                        return <span key={p} className="text-[10px] bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded shadow-sm">{pName}</span>;
                                     })
                                 )}
                             </div>
 
-                            {admin.role !== 'superadmin' && (
-                                <div className="flex gap-2 border-t border-gray-50 pt-3">
-                                    <button onClick={() => { if(window.confirm('ยืนยันการลบแอดมิน?')) onDeleteAdmin(admin.email); }} className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-xs font-bold hover:bg-red-100 transition flex justify-center items-center gap-1">
-                                        <Icon name="trash" weight="bold"/> ลบแอดมิน
+                            {/* ✅ เพิ่มปุ่มแก้ไข และจัดปุ่มให้อยู่ล่างสุดเสมอ */}
+                            <div className="flex gap-2 border-t border-gray-50 pt-3 mt-auto relative z-10">
+                                <button onClick={() => openModal(admin)} className="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex justify-center items-center gap-1 border border-blue-100">
+                                    <Icon name="pencil-simple" weight="bold"/> แก้ไข
+                                </button>
+                                {admin.role !== 'superadmin' && (
+                                    <button onClick={() => { if(window.confirm(`ยืนยันการลบแอดมิน ${admin.name}?`)) onDeleteAdmin(admin.email); }} className="flex-1 py-2 bg-white text-red-500 rounded-lg text-xs font-bold hover:bg-red-50 transition flex justify-center items-center gap-1 border border-red-100">
+                                        <Icon name="trash" weight="bold"/> ลบ
                                     </button>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
 
-                {/* Modal เพิ่มแอดมิน */}
-                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="เพิ่มผู้ดูแลระบบ">
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div><label className="text-xs font-bold text-gray-500 block mb-1">ชื่อแอดมิน</label><input type="text" required value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
-                        <div><label className="text-xs font-bold text-gray-500 block mb-1">อีเมลสำหรับ Login</label><input type="email" required value={form.email} onChange={e=>setForm({...form, email: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
-                        <div><label className="text-xs font-bold text-gray-500 block mb-1">รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)</label><input type="text" required value={form.password} onChange={e=>setForm({...form, password: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none"/></div>
+                <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingAdmin ? "แก้ไขผู้ดูแลระบบ" : "เพิ่มผู้ดูแลระบบ"}>
+                    <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 block mb-1">อีเมลสำหรับ Login</label>
+                            <input 
+                                type="email" required 
+                                value={form.email} 
+                                onChange={e=>setForm({...form, email: e.target.value})} 
+                                readOnly={!!editingAdmin} /* ไม่อนุญาตให้แก้อีเมลตอน Edit */
+                                className={`w-full p-3 rounded-xl border outline-none font-medium text-sm ${editingAdmin ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'bg-gray-50 focus:border-blue-500 text-gray-700'}`}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 block mb-1">ชื่อแอดมิน</label>
+                            <input type="text" required value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none text-sm font-medium"/>
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 block mb-1">
+                                {editingAdmin ? "รหัสผ่านใหม่ (เว้นว่างหากไม่ต้องการเปลี่ยน)" : "รหัสผ่านชั่วคราว (6 ตัวขึ้นไป)"}
+                            </label>
+                            <input 
+                                type="text" 
+                                required={!editingAdmin} /* บังคับกรอกเฉพาะตอนเพิ่มใหม่ */
+                                value={form.password} 
+                                onChange={e=>setForm({...form, password: e.target.value})} 
+                                className="w-full p-3 bg-gray-50 rounded-xl border focus:border-blue-500 outline-none text-sm font-medium"
+                                placeholder={editingAdmin ? "ปล่อยว่างไว้เพื่อใช้รหัสผ่านเดิม..." : "ตั้งรหัสผ่านเบื้องต้น..."}
+                            />
+                        </div>
                         
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-1">ระดับสิทธิ์ (Role)</label>
-                                <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border outline-none">
+                                <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})} className="w-full p-3 bg-white rounded-xl border outline-none text-sm font-bold text-gray-700">
                                     <option value="admin">Admin ทั่วไป</option>
                                     <option value="superadmin">Super Admin</option>
                                 </select>
@@ -3269,22 +3326,24 @@
                             {form.role !== 'superadmin' && (
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 block mb-1">ดูแลข้อมูลของชั้นปี</label>
-                                    <select value={form.cohort} onChange={e=>setForm({...form, cohort: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border outline-none">
-                                        <option value="67">ปี 67</option>
-                                        <option value="68">ปี 68</option>
+                                    {/* ✅ นำ availableCohorts มาสร้างเป็น Option အัตโนมัติ */}
+                                    <select value={form.cohort} onChange={e=>setForm({...form, cohort: e.target.value})} className="w-full p-3 bg-white rounded-xl border outline-none text-sm font-bold text-gray-700">
+                                        {availableCohorts.map(c => (
+                                            <option key={c} value={c}>ปี {c}</option>
+                                        ))}
                                     </select>
                                 </div>
                             )}
                         </div>
 
                         {form.role !== 'superadmin' && (
-                            <div className="border-t border-gray-100 pt-3">
-                                <label className="text-xs font-bold text-gray-500 block mb-2">เมนูที่อนุญาตให้เข้าถึง</label>
+                            <div className="border-t border-gray-100 pt-4 mt-2">
+                                <label className="text-xs font-bold text-gray-500 block mb-3 flex items-center gap-1"><Icon name="shield-check" weight="fill"/> เมนูที่อนุญาตให้เข้าถึง</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {ALL_PERMISSIONS.map(perm => (
-                                        <label key={perm.id} className={`flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition ${form.permissions.includes(perm.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:bg-gray-50 text-gray-600'}`}>
+                                        <label key={perm.id} className={`flex items-center gap-2 p-2 border rounded-xl cursor-pointer transition shadow-sm ${form.permissions.includes(perm.id) ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-200'}`}>
                                             <input type="checkbox" checked={form.permissions.includes(perm.id)} onChange={() => togglePermission(perm.id)} className="hidden"/>
-                                            <div className={`w-4 h-4 rounded flex items-center justify-center border ${form.permissions.includes(perm.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                            <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${form.permissions.includes(perm.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
                                                 {form.permissions.includes(perm.id) && <Icon name="check" size={10} className="text-white" weight="bold"/>}
                                             </div>
                                             <span className="text-xs font-bold">{perm.label}</span>
@@ -3294,8 +3353,9 @@
                             </div>
                         )}
 
-                        <button type="submit" disabled={loading} className="w-full py-4 bg-gray-800 text-white font-bold rounded-xl shadow-lg mt-4">
-                            {loading ? 'กำลังบันทึก...' : 'สร้างบัญชีแอดมิน'}
+                        <button type="submit" disabled={loading} className="w-full py-4 bg-gray-800 text-white font-bold rounded-xl shadow-lg mt-4 flex justify-center items-center gap-2 hover:bg-gray-700 transition active:scale-95">
+                            {loading ? <Icon name="circle-notch" className="animate-spin" /> : <Icon name="floppy-disk" weight="fill" size={20} />}
+                            {loading ? 'กำลังบันทึก...' : (editingAdmin ? 'บันทึกการแก้ไข' : 'สร้างบัญชีแอดมิน')}
                         </button>
                     </form>
                 </Modal>
@@ -5319,13 +5379,13 @@
           return <LoginScreen />;
       }
       const allMenus = [ 
-          { id: 'dashboard', icon: 'squares-four', label: 'หน้าแรก' }, 
-          { id: 'bills', icon: 'receipt', label: 'บิล' }, 
-          { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อ' },
-          { id: 'finance', icon: 'wallet', label: 'การเงิน' }, 
-          { id: 'history', icon: 'clipboard-text', label: 'ประวัติ' }, 
-          { id: 'students', icon: 'users', label: 'ผู้ใช้' }, 
-          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน' },
+          { id: 'dashboard', icon: 'squares-four', label: 'แดชบอร์ด' }, 
+          { id: 'bills', icon: 'receipt', label: 'จัดการบิล' }, 
+          { id: 'orders', icon: 'shopping-bag', label: 'สั่งซื้อสินค้า' },
+          { id: 'finance', icon: 'wallet', label: 'บัญชี/การเงิน' }, 
+          { id: 'history', icon: 'clipboard-text', label: 'ประวัติชำระเงิน' }, 
+          { id: 'students', icon: 'users', label: 'จัดการผู้ใช้' }, 
+          { id: 'notifications', icon: 'bell', label: 'แจ้งเตือน (LINE)' },
           { id: 'settings', icon: 'gear', label: 'ตั้งค่าระบบ' },
           { id: 'admins', icon: 'shield-star', label: 'ผู้ดูแล' } // เมนูใหม่
       ];
@@ -5421,10 +5481,11 @@
                   {activeTab === 'orders' && <OrderView orderData={orderData} students={data.students} onToggleSystem={handleToggleOrderSystem} onSaveProduct={handleSaveProduct} onDeleteProduct={handleDeleteProductClick} onDeleteOrder={handleDeleteOrderClick} onUpdateStatus={handleUpdateOrderStatus} onViewSlip={setViewingSlipUrl} loading={loading} processingAction={processingAction} onEditOrder={handleEditOrder} setOrderData={setOrderData} />}
                   {activeTab === 'settings' && <SettingsView data={data} setData={setData} orderData={orderData} setAnnounceForm={setAnnounceForm} setIsAnnounceModalOpen={setIsAnnounceModalOpen} onOpenQrManager={openQrManager} onEditQr={openQrEditor} processingAction={processingAction} setProcessingAction={setProcessingAction} onViewImage={setViewingSlipUrl} onToggleOrderSystem={handleToggleOrderSystem} />}
                   
-                  {/* ✅ เพิ่ม AdminView ตรงนี้ (เฉพาะแอดมินระดับ Super ถึงจะเห็น) */}
+                  {/* ✅ เพิ่ม students={data.students} เข้าไปตรงนี้ */}
                   {activeTab === 'admins' && currentAdmin?.role === 'superadmin' && (
                       <AdminView 
                           admins={adminList} 
+                          students={data.students} // <-- เพิ่มบรรทัดนี้
                           onSaveAdmin={handleSaveAdmin} 
                           onDeleteAdmin={handleDeleteAdminClick} 
                           loading={processingAction === 'SAVE_ADMIN'} 
