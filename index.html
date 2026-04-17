@@ -2846,8 +2846,8 @@
                 <button onClick={() => setSortOrder(p => p === 'newest' ? 'oldest' : 'newest')} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white card-shadow border border-gray-100 text-gray-500 hover:bg-gray-50 transition active:scale-95"><Icon name={sortOrder === 'newest' ? "sort-descending" : "sort-ascending"} weight="bold" size={20} /></button>
             </div>
 
-            <div className="space-y-3">
-              {filteredBills.map((bill, idx) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredBills.map((bill, idx) => {
                 const fine = calculateFine(bill); 
                 let studentName = data.students.find(s => String(s.id) === String(bill.studentId))?.name || ''; 
                 
@@ -3064,8 +3064,8 @@
             </div>
 
             {/* List Items */}
-            <div className="space-y-3">
-              {filteredHistory.map((item, idx) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredHistory.map((item, idx) => {
                 const studentObj = data.students.find(s => String(s.id) === String(item.studentId));
                 const studentName = studentObj ? studentObj.name : (item.name || 'ไม่พบชื่อในระบบ');
 
@@ -5733,6 +5733,10 @@
 
       const [hasSelectedInitialCohort, setHasSelectedInitialCohort] = useState(false);
 
+      useEffect(() => {
+          window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      }, [activeTab]);
+
       // ดึงชั้นปีทั้งหมดที่มีในระบบมาทำ Dropdown (ดึงจากฐานข้อมูลตรงๆ ไม่ใช่จากตารางที่กรองแล้ว)
       const availableCohorts = useMemo(() => {
           if (data?.allCohorts && data.allCohorts.length > 0) {
@@ -6220,7 +6224,7 @@
               </button>
             </header>
 
-            <main className="p-4 md:p-8 max-w-5xl mx-auto w-full pb-24 md:pb-12 flex-1">
+            <main className="p-4 md:p-8 max-w-full mx-auto w-full pb-24 md:pb-12 flex-1">
               {loading && !data.students?.length ? <Spinner /> : (
                 <>
                   {activeTab === 'dashboard' && <DashboardView data={data} orderData={orderData} setActiveTab={setActiveTab} setNotificationSubTab={setNotificationSubTab} onGoToPendingBills={handleGoToPendingBills} onGoToOverdueBills={handleGoToOverdueBills} onGoToUnpaidBills={handleGoToUnpaidBills} onEditHistory={setEditingHistory} onSelectBill={setSelectedBill} />}
