@@ -4302,13 +4302,55 @@
         </Modal>
       );
     };
-// --- 1. Order Export Modal (อัปเดต: รองรับภาษาไทย 100%) ---
-    const OrderExportModal = ({ isOpen, onClose, orders, students }) => {
+
+// --- Order Export Modal (V5: แก้ไขการซ่อนชื่อ, จัดขวา, ลดปัญหาสระซ้อน) ---
+    const OrderExportModal = ({ isOpen, onClose, orders, students, adminContext }) => {
         const [config, setConfig] = useState({
             orderId: true, studentId: true, name: true, items: true, qty: true,
             maskId: false, maskName: false
         });
-        const [isExporting, setIsExporting] = useState(false); // 🌟 เพิ่ม State บอกสถานะโหลด
+
+        const [selectedItemsFilter, setSelectedItemsFilter] = useState([]);
+        const [isExporting, setIsExporting] = useState(false);
+
+        // 🌟 แก้ไข: ดึงเฉพาะ "ชื่อสินค้าหลัก" (ตัดตัวเลือกสี/ไซส์ออก) เพื่อให้ตัวกรองดูง่าย ไม่ซ้ำซ้อน
+        const uniqueProductNames = useMemo(() => {
+            const names = new Set();
+            orders.forEach(o => {
+                const itemsStr = typeof o.items === 'string' ? o.items : String(o.items || '');
+                const rawItems = itemsStr.split(/,\s*(?![^()]*\))/); // ใช้ Regex แยกเฉพาะลูกน้ำนอกวงเล็บ
+                
+                rawItems.forEach(i => {
+                    let text = i.trim();
+                    // 1. ตัดคำว่า 'x จำนวน' ด้านหลังทิ้ง
+                    const qtyMatch = text.match(/\s*x\s*(\d+)$/);
+                    if (qtyMatch) text = text.slice(0, qtyMatch.index).trim();
+                    
+                    // 2. ตัด '(ตัวเลือก)' ทิ้ง เพื่อเอาแค่ชื่อสินค้าเพียวๆ
+                    const bracketMatch = text.match(/(.*)\(([^)]+)\)$/);
+                    if (bracketMatch) text = bracketMatch[1].trim();
+                    
+                    if (text) names.add(text);
+                });
+            });
+            return Array.from(names).sort();
+        }, [orders]);
+
+        useEffect(() => {
+            if (isOpen) setSelectedItemsFilter([]); 
+        }, [isOpen]);
+
+        const toggleItemFilter = (name) => {
+            setSelectedItemsFilter(prev => 
+                prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+            );
+        };
+
+        // 🛠️ ฟังก์ชันช่วยแก้ปัญหาสระภาษาไทยซ้อนใน jsPDF เบื้องต้น
+        const fixThaiText = (text) => {
+            if (!text) return '';
+            return String(text).replace(/ำ/g, '\u0E4D\u0E32');
+        };
 
         if (!isOpen) return null;
 
@@ -4316,18 +4358,11 @@
             setIsExporting(true);
             try {
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-
-                // 🇹🇭 1. อัปเดตลิงก์ฟอนต์ใหม่ (เปลี่ยนจาก master เป็น main)
-                let fontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/sarabun@main/fonts/ttf/Sarabun-Regular.ttf';
-                let response = await fetch(fontUrl);
+                const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
                 
-                // ถ้าระบบ CDN หลักล่ม ให้สลับไปใช้ลิงก์สำรอง (Fallback)
-                if (!response.ok) {
-                    fontUrl = 'https://raw.githubusercontent.com/googlefonts/sarabun/main/fonts/ttf/Sarabun-Regular.ttf';
-                    response = await fetch(fontUrl);
-                }
-
+                const fontUrl = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf';
+                let response = await fetch(fontUrl);
+                if (!response.ok) response = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/sarabun/Sarabun-Regular.ttf');
                 if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดไฟล์ฟอนต์ได้");
                 
                 const blob = await response.blob();
@@ -4336,128 +4371,181 @@
                 reader.onloadend = () => {
                     try {
                         const base64Font = reader.result.split(',')[1];
-                        
                         doc.addFileToVFS('Sarabun-Regular.ttf', base64Font);
                         doc.addFont('Sarabun-Regular.ttf', 'Sarabun', 'normal');
-                        doc.setFont('Sarabun'); 
+                        doc.setFont('Sarabun');
 
-                        // 📌 2. กำหนดหัวตารางตามที่ตั้งค่า
-                        const tableColumn = [];
-                        if (config.orderId) tableColumn.push("เลขที่");
+                        const tableColumn = ["ลำดับ"]; 
+                        if (config.orderId) tableColumn.push("เลขออเดอร์");
                         if (config.studentId) tableColumn.push("รหัสนักศึกษา");
                         if (config.name) tableColumn.push("ชื่อ-นามสกุล");
                         if (config.items) tableColumn.push("รายการสินค้า");
                         if (config.qty) tableColumn.push("จำนวน");
 
-                        // 📌 3. เตรียมข้อมูลแต่ละบรรทัด
-                        const tableRows = orders.map(o => {
-                            const row = [];
+                        const filteredOrders = orders.filter(o => {
+                            if (selectedItemsFilter.length === 0) return true;
+                            const itemsStr = String(o.items || '');
+                            return selectedItemsFilter.some(filter => itemsStr.includes(filter));
+                        });
+
+                        const totalOrders = filteredOrders.length;
+                        const totalItemsQty = filteredOrders.reduce((sum, o) => {
+                            const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
+                            return sum + rawItems.reduce((acc, i) => {
+                                const m = i.match(/x\s*(\d+)$/);
+                                return acc + (m ? parseInt(m[1], 10) : 1);
+                            }, 0);
+                        }, 0);
+
+                        const yearStr = (adminContext?.effectiveCohort === 'ALL' || !adminContext?.effectiveCohort) ? 'ทั้งหมด' : adminContext.effectiveCohort;
+                        const dateStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+                        const pageWidth = doc.internal.pageSize.getWidth();
+
+                        const tableRows = filteredOrders.map((o, index) => {
+                            const row = [index + 1];
                             const student = students.find(s => String(s.id) === String(o.studentId));
                             let sId = String(o.studentId);
                             let sName = student?.name || 'ไม่ทราบชื่อ';
 
-                            // 🛡️ ระบบซ่อนข้อมูล (Masking)
+                            sName = sName.replace(/^(นาย|นางสาว|นาง)\s*/, '');
+
                             if (config.maskId && sId.length > 6) {
                                 sId = sId.substring(0, sId.length - 6) + "******";
                             }
+                            
                             if (config.maskName) {
-                                const parts = sName.split(' ');
-                                sName = parts[0] + (parts.length > 1 ? " ****" : "");
+                                const parts = sName.trim().split(/\s+/); 
+                                if (parts.length > 1) {
+                                    const lastName = parts.pop(); 
+                                    if (lastName.length > 0) {
+                                        sName = parts.join(' ') + ' ' + lastName.charAt(0) + '*****';
+                                    }
+                                }
                             }
 
                             if (config.orderId) row.push(o.orderId || '-');
                             if (config.studentId) row.push(sId);
-                            if (config.name) row.push(sName);
-                            if (config.items) row.push(o.items || '-');
+                            if (config.name) row.push(fixThaiText(sName)); 
+                            
+                            // 🌟 แก้ไข: จัดรูปแบบคอลัมน์รายการใน PDF ไม่ให้แตก
+                            if (config.items) {
+                                const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
+                                const formattedItems = rawItems.map(i => i.trim()).join('\n');
+                                row.push(fixThaiText(formattedItems));
+                            }
+                            
                             if (config.qty) {
-                                const totalQty = String(o.items).split(',').reduce((sum, i) => {
-                                    const m = i.match(/x\s*(\d+)/);
-                                    return sum + (m ? parseInt(m[1]) : 1);
+                                const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
+                                const orderQty = rawItems.reduce((sum, i) => {
+                                    const m = i.match(/x\s*(\d+)$/);
+                                    return sum + (m ? parseInt(m[1], 10) : 1);
                                 }, 0);
-                                row.push(totalQty);
+                                row.push(orderQty);
                             }
                             return row;
                         });
 
-                        // 📌 4. สร้างตารางลงใน PDF
                         doc.autoTable({
+                            startY: 45, 
+                            margin: { top: 20, right: 10, left: 10 },
                             head: [tableColumn],
                             body: tableRows,
-                            styles: { font: 'Sarabun', fontSize: 10 }, 
-                            theme: 'striped',
-                            headStyles: { fillColor: [37, 99, 235] }
+                            styles: { font: 'Sarabun', fontSize: 9, cellPadding: 3, valign: 'middle', minCellHeight: 10 },
+                            headStyles: { fillColor: [37, 99, 235], fontSize: 10 },
+                            didDrawPage: function (data) {
+                                doc.setFont('Sarabun', 'normal');
+                                doc.setFontSize(10);
+                                
+                                doc.text("MEDTECH System", data.settings.margin.left, 12);
+                                
+                                const pageStr = `หน้า ${doc.internal.getCurrentPageInfo().pageNumber} / {total_pages_count_string}`;
+                                doc.text(pageStr, pageWidth - data.settings.margin.right, 12, { align: 'right' });
+
+                                if (data.pageNumber === 1) {
+                                    doc.setFontSize(16);
+                                    doc.text("รายการสั่งซื้อสินค้า", pageWidth / 2, 22, { align: "center" });
+                                    
+                                    doc.setFontSize(12);
+                                    doc.text(`เทคนิคการแพทย์   ปี ${yearStr}`, pageWidth / 2, 30, { align: "center" });
+                                    
+                                    doc.text(`วันที่ ${dateStr}  /  จำนวนสั้งซื้อ ${totalOrders} รายการ  /  สินค้า ${totalItemsQty} ชิ้น`, pageWidth / 2, 38, { align: "center" });
+                                }
+                            }
                         });
 
-                        doc.save(`Order_Report_${new Date().getTime()}.pdf`);
+                        if (typeof doc.putTotalPages === 'function') {
+                            doc.putTotalPages('{total_pages_count_string}');
+                        }
+
+                        doc.save(`MedTech_Orders_${new Date().getTime()}.pdf`);
                         onClose();
                     } catch (e) {
                         console.error("PDF Generation Error:", e);
                         alert("เกิดข้อผิดพลาดตอนสร้างตาราง PDF: " + e.message);
                     } finally {
-                        setIsExporting(false); 
+                        setIsExporting(false);
                     }
                 };
                 
-                reader.readAsDataURL(blob); 
+                reader.readAsDataURL(blob);
 
             } catch (error) {
                 console.error("Fetch Font Error:", error);
-                alert("เกิดข้อผิดพลาดในการดึงข้อมูลฟอนต์ภาษาไทย กรุณาลองใหม่อีกครั้ง");
+                alert("เกิดข้อผิดพลาดในการดึงข้อมูลฟอนต์ภาษาไทย: " + error.message);
                 setIsExporting(false);
             }
         };
 
         return (
-            <Modal isOpen={isOpen} onClose={onClose} title="ตั้งค่าการส่งออก PDF">
+            <Modal isOpen={isOpen} onClose={onClose} title="ส่งออกข้อมูลออเดอร์ (PDF)">
                 <div className="space-y-6">
-                    {/* ส่วนเลือกคอลัมน์ */}
                     <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase mb-3 tracking-wider">เลือกข้อมูลที่ต้องการแสดง</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">1. เลือกข้อมูลที่ต้องการ</p>
                         <div className="grid grid-cols-2 gap-2">
-                            {[
-                                { k: 'orderId', l: 'เลขที่ออเดอร์' },
-                                { k: 'studentId', l: 'รหัสนักศึกษา' },
-                                { k: 'name', l: 'ชื่อ-นามสกุล' },
-                                { k: 'items', l: 'รายการสินค้า' },
-                                { k: 'qty', l: 'จำนวนรวม' }
-                            ].map(item => (
-                                <label key={item.k} className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition">
-                                    <input type="checkbox" checked={config[item.k]} onChange={e => setConfig({...config, [item.k]: e.target.checked})} className="w-4 h-4 rounded text-primary" />
-                                    <span className="text-sm font-bold text-gray-700">{item.l}</span>
+                            {['orderId', 'studentId', 'name', 'items', 'qty'].map(k => (
+                                <label key={k} className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl cursor-pointer">
+                                    <input type="checkbox" checked={config[k]} onChange={e => setConfig({...config, [k]: e.target.checked})} className="w-4 h-4" />
+                                    <span className="text-xs font-bold text-gray-700">{k==='orderId'?'เลขออเดอร์':k==='studentId'?'รหัสนักศึกษา':k==='name'?'ชื่อ':k==='items'?'รายการ':'จำนวน'}</span>
                                 </label>
                             ))}
                         </div>
                     </div>
 
-                    {/* ส่วนซ่อนข้อมูล */}
-                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100">
-                        <p className="text-xs font-bold text-amber-600 uppercase mb-3 flex items-center gap-1"><Icon name="shield-check" weight="fill"/> การรักษาความปลอดภัยข้อมูล</p>
-                        <div className="space-y-3">
-                            <label className="flex items-center justify-between cursor-pointer">
-                                <span className="text-sm font-medium text-gray-700">ซ่อนรหัสนักศึกษา (6 ตัวหลัง)</span>
-                                <div onClick={() => setConfig({...config, maskId: !config.maskId})} className={`w-10 h-6 rounded-full p-1 transition-colors ${config.maskId ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full shadow transform transition ${config.maskId ? 'translate-x-4' : 'translate-x-0'}`} />
+                    <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">2. กรองเฉพาะสินค้า (แสดงทั้งหมดหากไม่เลือก)</p>
+                        <div className="max-h-32 overflow-y-auto border border-gray-100 rounded-xl p-2 space-y-1">
+                            {uniqueProductNames.map(name => (
+                                <div key={name} onClick={() => toggleItemFilter(name)} className={`p-2 rounded-lg cursor-pointer text-[11px] font-bold transition ${selectedItemsFilter.includes(name) ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+                                    {name}
                                 </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                        <p className="text-xs font-bold text-red-600 mb-3 flex items-center gap-1"><Icon name="shield-check" weight="fill"/> ตั้งค่าความเป็นส่วนตัว</p>
+                        <div className="space-y-2">
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <span className="text-xs font-bold text-gray-700">ซ่อนรหัสนักศึกษา 6 ตัวหลัง</span>
+                                <input type="checkbox" checked={config.maskId} onChange={e => setConfig({...config, maskId: e.target.checked})} className="w-4 h-4" />
                             </label>
                             <label className="flex items-center justify-between cursor-pointer">
-                                <span className="text-sm font-medium text-gray-700">ซ่อนนามสกุล (ใส่ ****)</span>
-                                <div onClick={() => setConfig({...config, maskName: !config.maskName})} className={`w-10 h-6 rounded-full p-1 transition-colors ${config.maskName ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full shadow transform transition ${config.maskName ? 'translate-x-4' : 'translate-x-0'}`} />
-                                </div>
+                                <span className="text-xs font-bold text-gray-700">ซ่อนนามสกุล (เป็น น****)</span>
+                                <input type="checkbox" checked={config.maskName} onChange={e => setConfig({...config, maskName: e.target.checked})} className="w-4 h-4" />
                             </label>
                         </div>
                     </div>
 
-                    {/* ปุ่มบันทึก */}
-                    <button onClick={handleExport} disabled={isExporting} className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition transform active:scale-95">
-                        {isExporting ? <><Icon name="spinner" className="animate-spin" weight="bold" size={20}/> กำลังสร้างไฟล์ PDF...</> : <><Icon name="file-pdf" weight="bold" size={20}/> สร้างไฟล์ PDF และดาวน์โหลด</>}
+                    <button onClick={handleExport} disabled={isExporting} className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition">
+                        {isExporting ? <><Icon name="spinner" className="animate-spin" weight="bold" size={20}/> กำลังโหลดและสร้าง PDF...</> : <><Icon name="file-pdf" weight="bold" size={20}/> สร้างไฟล์ PDF</>}
                     </button>
                 </div>
             </Modal>
         );
     };
 
-const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, onEditOrder, setOrderData, processingAction, adminContext, availableCohorts }) => {
+// --- 2. Main Order View ---
+    const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDeleteOrder, onUpdateStatus, onViewSlip, loading, onEditOrder, setOrderData, processingAction, adminContext, availableCohorts }) => {
         
         const [subTab, setSubTab] = useState('orders');
         const [isModalOpen, setIsModalOpen] = useState(false);
@@ -4492,31 +4580,65 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
             } catch (e) { return '-'; }
         };
 
-        const parseOrderItems = (itemsStr) => {
-            if (!itemsStr) return [];
-            const safeStr = typeof itemsStr === 'string' ? itemsStr : String(itemsStr || '');
-            const rawItems = safeStr.includes('\n') ? safeStr.split('\n') : safeStr.split(/,(?![^(]*\))/);
+        // 🌟 ฟังก์ชันช่วยจัดรูปแบบรายละเอียดไอเทม (เวอร์ชันปรับปรุง แยกตัวเลือกในวงเล็บ)
+        const formatItemDisplay = (itemsStr) => {
+            if (!itemsStr) return null;
             
-            return rawItems.map(raw => {
-                let text = raw.trim();
-                if (!text) return null;
-                const qtyMatch = text.match(/\s*x\s*(\d+)$/i);
-                let qty = 1; let nameWithOptions = text;
-                if (qtyMatch) {
-                    qty = parseInt(qtyMatch[1], 10);
-                    nameWithOptions = text.slice(0, qtyMatch.index).trim();
-                }
-                let name = nameWithOptions; let options = [];
-                const optMatch = nameWithOptions.match(/\(([^)]+)\)$/);
-                if (optMatch) {
-                    const insideParens = optMatch[1];
-                    if (insideParens.includes(':') || insideParens.includes(',')) {
-                        name = nameWithOptions.slice(0, optMatch.index).trim();
-                        options = insideParens.split(',').map(opt => opt.trim());
-                    }
-                }
-                return { name, options, qty, original: text };
-            }).filter(Boolean);
+            // ใช้ Regex แยกด้วยลูกน้ำ(,) ที่อยู่ *นอกวงเล็บ* เท่านั้น
+            const rawItems = String(itemsStr).split(/,\s*(?![^()]*\))/);
+            
+            return (
+                <div className="space-y-2 mt-3">
+                    {rawItems.map((raw, idx) => {
+                        let text = raw.trim();
+                        if (!text) return null;
+                        
+                        // 1. ดึงตัวเลขจำนวนที่อยู่หลังสุด (เช่น x 2)
+                        let qty = 1;
+                        let nameWithOptions = text;
+                        const qtyMatch = text.match(/\s*x\s*(\d+)$/);
+                        if (qtyMatch) {
+                            qty = parseInt(qtyMatch[1], 10);
+                            nameWithOptions = text.slice(0, qtyMatch.index).trim();
+                        }
+
+                        // 2. ดึงชื่อรายการ และ ตัวเลือกในวงเล็บ
+                        let name = nameWithOptions;
+                        let optionsStr = "";
+                        const bracketMatch = nameWithOptions.match(/(.*)\(([^)]+)\)$/);
+                        if (bracketMatch) {
+                            name = bracketMatch[1].trim(); // ได้ชื่อรายการ
+                            optionsStr = bracketMatch[2].trim(); // ได้ข้อความในวงเล็บทั้งหมด
+                        }
+
+                        return (
+                            <div key={idx} className="flex justify-between items-start gap-2 bg-gray-50/80 p-2.5 rounded-xl border border-gray-100">
+                                <div className="flex-1">
+                                    {/* ชื่อสินค้า */}
+                                    <div className="text-xs font-bold text-gray-800 flex items-start">
+                                        <Icon name="caret-right" size={12} className="mr-1.5 mt-0.5 text-blue-500 shrink-0"/>
+                                        {name}
+                                    </div>
+                                    {/* ตัวเลือก (ถ้ามี) */}
+                                    {optionsStr && (
+                                        <div className="text-[10px] text-gray-500 mt-1.5 ml-4 flex flex-wrap gap-1">
+                                            {optionsStr.split(',').map((opt, oIdx) => (
+                                                <span key={oIdx} className="bg-white border border-gray-200 px-1.5 py-0.5 rounded-md shadow-sm">
+                                                    {opt.trim()}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {/* จำนวน */}
+                                <div className="text-xs font-black text-blue-600 bg-blue-100 px-2 py-1 rounded-lg shrink-0">
+                                    x {qty}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
         };
 
         const safeProducts = Array.isArray(orderData?.products) ? orderData.products : [];
@@ -4538,16 +4660,23 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
         const groupedOrders = useMemo(() => {
             const groups = {};
             filteredOrders.forEach(o => {
-                const sId = String(o.studentId || 'ไม่มีรหัส');
+                const sId = String(o.studentId || 'N/A');
                 if (!groups[sId]) {
-                    const sName = students?.find(s => String(s.id) === sId)?.name || 'ไม่พบชื่อนักศึกษา';
-                    groups[sId] = { studentId: sId, studentName: sName, totalPrice: 0, orders: [], latestDate: 0 };
+                    const student = students?.find(s => String(s.id) === sId);
+                    groups[sId] = { 
+                        studentId: sId, 
+                        studentName: student?.name || 'ไม่ทราบชื่อ', 
+                        orders: [], 
+                        totalPrice: 0,
+                        latestDate: 0
+                    };
                 }
                 groups[sId].orders.push(o);
-                groups[sId].totalPrice += Number(o.price) || 0;
+                groups[sId].totalPrice += Number(o.price || 0);
                 const orderTime = parseDateSafe(o.date).getTime() || 0;
                 if (orderTime > groups[sId].latestDate) groups[sId].latestDate = orderTime;
             });
+            
             return Object.values(groups).sort((a, b) => {
                 return sortOrder === 'newest' ? b.latestDate - a.latestDate : a.latestDate - b.latestDate;
             });
@@ -4557,15 +4686,64 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
         const handleAddProduct = () => { setEditingProduct(null); setIsModalOpen(true); };
         const openEditOrderModal = (order) => { setEditingOrder(order); setIsEditOrderModalOpen(true); };
 
+        const confirmBulkStatusUpdate = () => {
+            if (filteredOrders.length === 0) return;
+            setIsBulkStatusOpen(false);
+            setAlertState({ isOpen: true, type: 'info', title: 'ยืนยันการเปลี่ยนสถานะ', message: `คุณต้องการเปลี่ยนสถานะ ${filteredOrders.length} รายการ เป็น "${bulkTargetStatus}" ใช่หรือไม่?`, onConfirm: executeBulkStatusUpdate });
+        };
+
+        const executeBulkStatusUpdate = async () => {
+            setAlertState(prev => ({ ...prev, isOpen: false }));
+            setTimeout(async () => {
+                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
+                let completed = 0;
+                for (const order of filteredOrders) {
+                    if (order.status !== bulkTargetStatus) {
+                        await new Promise(resolve => { onUpdateStatus(order.orderId, bulkTargetStatus); setTimeout(resolve, 800); });
+                    }
+                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
+                }
+                setIsProcessingBulk(false);
+                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
+            }, 100);
+        };
+
+        const confirmBulkDelete = () => {
+             if (filteredOrders.length === 0) return;
+             setAlertState({ isOpen: true, type: 'danger', title: '⚠️ ยืนยันการลบข้อมูล', message: `คุณกำลังจะลบออเดอร์ ${filteredOrders.length} รายการ\nการกระทำนี้ไม่สามารถกู้คืนได้ ยืนยันหรือไม่?`, onConfirm: executeBulkDelete });
+        };
+
+        const executeBulkDelete = async () => {
+             setAlertState(prev => ({ ...prev, isOpen: false }));
+             setTimeout(async () => {
+                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
+                let completed = 0;
+                for (const order of filteredOrders) {
+                    await new Promise(resolve => { onDeleteOrder(order.orderId); setTimeout(resolve, 800); });
+                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
+                }
+                setIsProcessingBulk(false);
+                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
+             }, 100);
+        };
+
         const getOrderStatusStyle = (status) => {
             switch(status) {
                 case 'ชำระแล้ว': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
                 case 'รอตรวจสอบ': return 'bg-amber-50 text-amber-700 border-amber-200';
                 case 'อยู่ระหว่างผลิต': return 'bg-purple-50 text-purple-700 border-purple-200';
+                case 'อยู่ระหว่างสั่งซื้อ': return 'bg-blue-50 text-blue-700 border-blue-200';
+                case 'รอรับของ': return 'bg-pink-50 text-pink-700 border-pink-200';
                 case 'รับแล้ว': return 'bg-teal-50 text-teal-700 border-teal-200';
                 case 'ยกเลิก': return 'bg-gray-100 text-gray-500 border-gray-200';
-                default: return 'bg-blue-50 text-blue-700 border-blue-200';
+                default: return 'bg-gray-50 text-gray-600 border-gray-200';
             }
+        };
+
+        const getProductStatusStyle = (status) => {
+            if (status === 'ON') return 'bg-green-500 text-white';
+            if (status === 'OUT') return 'bg-amber-500 text-white';
+            return 'bg-gray-400 text-white';
         };
 
         return (
@@ -4595,9 +4773,9 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                             <button onClick={() => setIsSummaryOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition active:scale-95" title="สรุปยอด"><Icon name="chart-pie-slice" weight="fill" size={20}/></button>
                             <button onClick={() => setIsScannerOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-white text-gray-600 card-shadow border border-gray-100 hover:bg-gray-50 transition active:scale-95" title="สแกน QR"><Icon name="qr-code" weight="bold" size={20}/></button>
                             
-                            {/* 🌟 ปุ่มส่งออกใหม่ แทนที่ปุ่มเรียงลำดับ 🌟 */}
-                            <button onClick={() => setIsExportModalOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition active:scale-95" title="ส่งออกข้อมูล">
-                                <Icon name="file-arrow-up" weight="bold" size={20}/>
+                            {/* 🌟 ปุ่มส่งออก PDF 🌟 */}
+                            <button onClick={() => setIsExportModalOpen(true)} className="w-11 h-11 flex items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition active:scale-95" title="ส่งออกข้อมูล PDF">
+                                <Icon name="file-pdf" weight="bold" size={20}/>
                             </button>
                         </>
                     )}
@@ -4614,7 +4792,7 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                                 <div key={p.id} className="group bg-white p-3 rounded-2xl card-shadow border border-gray-100 hover:border-blue-200 transition relative overflow-hidden">
                                     <div className="aspect-square bg-gray-50 rounded-xl mb-3 overflow-hidden flex items-center justify-center relative">
                                         <ProductImageGallery product={p} />
-                                        <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-20 ${p.status === 'ON' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}`}>{p.status}</span>
+                                        <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-20 ${getProductStatusStyle(p.status)}`}>{p.status}</span>
                                     </div>
                                     <h4 className="font-bold text-sm text-gray-800 line-clamp-1 mb-1">{p.name}</h4>
                                     <div className="flex justify-between items-end">
@@ -4627,6 +4805,7 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                                     </div>
                                 </div>
                             ))}
+                            {filteredProducts.length === 0 && (<div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-300"><Icon name="t-shirt" size={40} className="opacity-30 mb-2"/><p>ไม่พบสินค้า</p></div>)}
                         </div>
                     ) : (
                         <div className="space-y-4 animate-fade-in">
@@ -4636,11 +4815,18 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                                     <button onClick={() => setIsBulkStatusOpen(true)} className="flex-1 py-2.5 bg-white text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition flex items-center justify-center gap-1 border border-indigo-100 shadow-sm">
                                         <Icon name="arrows-clockwise" weight="bold"/> จัดการสถานะกลุ่ม ({filteredOrders.length})
                                     </button>
+                                    <button onClick={confirmBulkDelete} className="flex-1 py-2.5 bg-white text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 transition flex items-center justify-center gap-1 border border-red-100 shadow-sm">
+                                        <Icon name="trash" weight="bold"/> ลบทั้งหมด ({filteredOrders.length})
+                                    </button>
                                 </div>
                             )}
 
+                            {groupedOrders.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-16 text-gray-300"><Icon name="shopping-bag" size={40} className="opacity-30 mb-2"/><p>{searchTerm ? "ไม่พบออเดอร์ที่ค้นหา" : "ไม่มีรายการสั่งซื้อ"}</p></div>
+                            )}
+
                             {groupedOrders.map((group) => (
-                                <div key={group.studentId} className="bg-white rounded-3xl card-shadow border border-gray-100 overflow-hidden">
+                                <div key={group.studentId} className="bg-white rounded-3xl card-shadow border border-gray-100 overflow-hidden transition-all hover:shadow-lg">
                                     <div className="p-4 bg-gray-50/80 border-b border-gray-100 flex justify-between items-center">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-xl bg-white text-primary flex items-center justify-center text-lg font-black border border-gray-100 shadow-sm">{String(group.studentName).charAt(0)}</div>
@@ -4668,13 +4854,18 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                                                         <button onClick={()=>onDeleteOrder(o.orderId)} className="w-8 h-8 rounded-lg bg-gray-50 text-gray-500 hover:text-red-500 flex items-center justify-center transition border border-gray-100 shadow-sm"><Icon name="trash" weight="bold" size={16}/></button>
                                                     </div>
                                                 </div>
-                                                <div className="text-sm font-medium text-gray-700 bg-gray-50 p-3 rounded-xl mb-3 whitespace-pre-wrap leading-relaxed">{o.items}</div>
-                                                <div className="flex justify-between items-center">
-                                                    <div className="text-base font-black text-gray-800">฿{Number(o.price).toLocaleString()}</div>
+                                                
+                                                {/* 🌟 แสดงรายละเอียดไอเทม 🌟 */}
+                                                {formatItemDisplay(o.items)}
+
+                                                <div className="flex justify-between items-center mt-3 pt-3 border-t border-dashed border-gray-100">
+                                                    <div className="text-sm font-black text-primary">฿{Number(o.price).toLocaleString()}</div>
                                                     <select value={o.status} onChange={(e)=>onUpdateStatus(o.orderId, e.target.value)} className={`pl-3 pr-8 py-1.5 rounded-xl text-[11px] font-bold border outline-none cursor-pointer shadow-sm appearance-none relative ${getOrderStatusStyle(o.status)}`}>
                                                         <option value="รอตรวจสอบ">รอตรวจสอบ</option>
                                                         <option value="ชำระแล้ว">ชำระแล้ว</option>
+                                                        <option value="อยู่ระหว่างสั่งซื้อ">อยู่ระหว่างสั่งซื้อ</option>
                                                         <option value="อยู่ระหว่างผลิต">อยู่ระหว่างผลิต</option>
+                                                        <option value="รอรับของ">รอรับของ</option>
                                                         <option value="รับแล้ว">รับแล้ว</option>
                                                         <option value="ยกเลิก">ยกเลิก</option>
                                                     </select>
@@ -4699,31 +4890,85 @@ const OrderView = ({ orderData, students, onSaveProduct, onDeleteProduct, onDele
                     availableCohorts={availableCohorts} 
                 />
                 <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanSuccess} />
-                <OrderSummaryModal isOpen={isSummaryOpen} onClose={() => setIsSummaryOpen(false)} orders={filteredOrders} products={safeProducts} />
-                <EditOrderModal isOpen={isEditOrderModalOpen} onClose={() => setIsEditOrderModalOpen(false)} order={editingOrder} onSave={(data) => { handleEditOrder(data); setIsEditOrderModalOpen(false); }} loading={processingAction === 'EDIT_ORDER'} />
+                <OrderSummaryModal isOpen={isSummaryOpen} onClose={() => setIsSummaryOpen(false)} orders={filteredOrders} products={safeProducts} zIndex="z-[110]" />
+                <EditOrderModal isOpen={isEditOrderModalOpen} onClose={() => setIsEditOrderModalOpen(false)} order={editingOrder} onSave={(data) => { onEditOrder(data); setIsEditOrderModalOpen(false); }} loading={processingAction === 'EDIT_ORDER'} zIndex="z-[110]" />
                 
-                {/* 🌟 Export Modal 🌟 */}
+                {/* 🌟 Export PDF Modal 🌟 */}
                 <OrderExportModal 
                     isOpen={isExportModalOpen} 
                     onClose={() => setIsExportModalOpen(false)} 
                     orders={filteredOrders} 
                     students={students} 
+                    adminContext={adminContext} // 🌟 เพิ่มบรรทัดนี้
                 />
 
                 {/* Bulk Status Modal */}
-                <Modal isOpen={isBulkStatusOpen} onClose={() => setIsBulkStatusOpen(false)} title="เปลี่ยนสถานะกลุ่ม">
+                <Modal isOpen={isBulkStatusOpen} onClose={() => setIsBulkStatusOpen(false)} title="เปลี่ยนสถานะกลุ่ม" zIndex="z-[100]">
                     <div className="space-y-4 pt-2">
                         <p className="text-sm text-gray-600 text-center">จะเปลี่ยนสถานะทั้งหมด <strong className="text-indigo-600">{filteredOrders.length} ออเดอร์</strong></p>
                         <select value={bulkTargetStatus} onChange={e => setBulkTargetStatus(e.target.value)} className="w-full p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm font-bold text-indigo-700 outline-none">
                             <option value="รอตรวจสอบ">รอตรวจสอบ</option>
                             <option value="ชำระแล้ว">ชำระแล้ว</option>
+                            <option value="อยู่ระหว่างสั่งซื้อ">อยู่ระหว่างสั่งซื้อ</option>
                             <option value="อยู่ระหว่างผลิต">อยู่ระหว่างผลิต</option>
+                            <option value="รอรับของ">รอรับของ</option>
                             <option value="รับแล้ว">รับแล้ว</option>
                             <option value="ยกเลิก">ยกเลิก</option>
                         </select>
-                        <button onClick={() => { setIsBulkStatusOpen(false); onUpdateStatus('BULK', bulkTargetStatus); }} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">ยืนยันการเปลี่ยนสถานะ</button>
+                        <button onClick={confirmBulkStatusUpdate} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">ยืนยันการเปลี่ยนสถานะ</button>
                     </div>
                 </Modal>
+
+                <Modal isOpen={alertState.isOpen} onClose={() => setAlertState({ ...alertState, isOpen: false })} title={alertState.type === 'danger' ? "คำเตือน" : (alertState.type === 'success' ? "เรียบร้อย" : "ยืนยัน")} zIndex="z-[120]">
+                    <div className="space-y-4 pt-2 text-center">
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 ${
+                            alertState.type === 'danger' ? 'bg-red-100 text-red-500' : 
+                            alertState.type === 'success' ? 'bg-green-100 text-green-500' : 
+                            'bg-blue-100 text-blue-500'
+                        }`}>
+                            <Icon name={
+                                alertState.type === 'danger' ? "warning-circle" : 
+                                alertState.type === 'success' ? "check-circle" : 
+                                "info"
+                            } weight="fill" size={32}/>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800">{alertState.title}</h3>
+                            <p className="text-sm text-gray-500 mt-1 whitespace-pre-line">{alertState.message}</p>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                            {alertState.type !== 'success' && (
+                                <button onClick={() => setAlertState({ ...alertState, isOpen: false })} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">ยกเลิก</button>
+                            )}
+                            <button 
+                                onClick={alertState.onConfirm} 
+                                className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg transition ${
+                                    alertState.type === 'danger' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' : 
+                                    alertState.type === 'success' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 
+                                    'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                                }`}
+                            >
+                                {alertState.type === 'success' ? 'ตกลง' : 'ยืนยันทำรายการ'}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+
+                {isProcessingBulk && (
+                    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+                        <div className="flex flex-col items-center justify-center w-[90%] max-w-sm bg-white rounded-3xl p-8 card-shadow">
+                            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+                            <div className="text-center mt-4">
+                                <h3 className="text-lg font-bold text-gray-800">กำลังประมวลผล...</h3>
+                                <p className="text-gray-500 text-sm mt-1">สำเร็จ {bulkProgress.current} จาก {bulkProgress.total} รายการ</p>
+                            </div>
+                            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mt-6 border border-gray-200">
+                                <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}></div>
+                            </div>
+                            <p className="text-[10px] text-red-400 font-bold mt-4 animate-pulse">ห้ามปิดหน้านี้จนกว่าจะเสร็จ</p>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
