@@ -6224,9 +6224,13 @@
       };
 
       const confirmLogout = () => {
-          firebase.auth().signOut();
-          setHasSelectedInitialCohort(false); // ✅ รีเซ็ตค่าเมื่อออกจากระบบ
+          setIsLogoutModalOpen(false); // 🌟 สั่งปิด Modal ก่อน
+          firebase.auth().signOut();   // Firebase จะดีดสถานะ isLoggedIn เป็น false ให้อัตโนมัติ
       };
+
+      if (!isLoggedIn) {
+          return <LoginScreen />;
+      }
 
       return (
         <div className="min-h-screen bg-background text-gray-800 font-sans md:flex relative">
