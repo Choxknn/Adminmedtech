@@ -474,9 +474,21 @@ transRefSnap.forEach(doc => {
                     if (form.slipFile) {
                         finalSlipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-HIST-${form.billId}-${Date.now()}.jpg` });
                     }
-                    await db.collection('users').doc(String(form.studentId)).collection('history').doc(String(form.billId)).update({ 
-                        item: form.item, total: Number(form.total), payDate: new Date(form.payDate).toISOString(), slipUrl: finalSlipUrl 
-                    });
+
+                    // 🌟 เปลี่ยนจาก .update() เป็น .set(..., { merge: true }) เพื่อความปลอดภัย
+                    await db.collection('users')
+                            .doc(String(form.studentId))
+                            .collection('history')
+                            .doc(String(form.billId))
+                            .set({ 
+                                item: form.item, 
+                                total: Number(form.total), 
+                                payDate: new Date(form.payDate).toISOString(), 
+                                slipUrl: finalSlipUrl,
+                                studentId: String(form.studentId),
+                                billId: String(form.billId)
+                            }, { merge: true }); // ✅ merge: true คือการสั่งให้อัปเดตเฉพาะฟิลด์ที่ส่งไป
+
                     return await apiCall('getAllData', currentAdmin);
                 }
 
