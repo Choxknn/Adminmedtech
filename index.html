@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Admin Medtech System</title>
-  <link rel="icon" type="image/png" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
-    <link rel="apple-touch-icon" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
+  <link rel="icon" type="image/png" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
+    <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -474,21 +474,9 @@ transRefSnap.forEach(doc => {
                     if (form.slipFile) {
                         finalSlipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-HIST-${form.billId}-${Date.now()}.jpg` });
                     }
-
-                    // 🌟 เปลี่ยนจาก .update() เป็น .set(..., { merge: true }) เพื่อความปลอดภัย
-                    await db.collection('users')
-                            .doc(String(form.studentId))
-                            .collection('history')
-                            .doc(String(form.billId))
-                            .set({ 
-                                item: form.item, 
-                                total: Number(form.total), 
-                                payDate: new Date(form.payDate).toISOString(), 
-                                slipUrl: finalSlipUrl,
-                                studentId: String(form.studentId),
-                                billId: String(form.billId)
-                            }, { merge: true }); // ✅ merge: true คือการสั่งให้อัปเดตเฉพาะฟิลด์ที่ส่งไป
-
+                    await db.collection('users').doc(String(form.studentId)).collection('history').doc(String(form.billId)).update({ 
+                        item: form.item, total: Number(form.total), payDate: new Date(form.payDate).toISOString(), slipUrl: finalSlipUrl 
+                    });
                     return await apiCall('getAllData', currentAdmin);
                 }
 
@@ -1654,7 +1642,7 @@ transRefSnap.forEach(doc => {
         );
     };
 
-    // --- Student Form (อัปเดตระบบจัดการสิทธิ์, UID Read-only, เปลี่ยนลบเป็นรีเซ็ต) ---
+    // --- Student Form (อัปเดตระบบจัดการสิทธิ์, แก้ Error apiCall พารามิเตอร์ขยับ) ---
     const StudentForm = ({ onSubmit, loading, initialData = null }) => {
       const AVAILABLE_PERMISSIONS = [
         { id: 'home', label: 'หน้าแรก (Home)' },
@@ -1699,7 +1687,6 @@ transRefSnap.forEach(doc => {
           onSubmit(submitData);
       };
 
-      // 🌟 ฟังก์ชันสำหรับคัดลอก UID 🌟
       const copyToClipboard = (text, label) => {
           if (!text) return;
           navigator.clipboard.writeText(text).then(() => {
@@ -1714,7 +1701,7 @@ transRefSnap.forEach(doc => {
           <div><label className="block text-sm font-medium text-gray-700 mb-1">รหัสนักศึกษา</label><input type="text" name="id" value={form.id} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" readOnly={!!initialData} /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label><input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
           
-          {/* 🌟 1. ปรับช่อง UID ให้เป็นแบบ Read-only และมีปุ่ม Copy 🌟 */}
+          {/* ช่องแสดง UID พร้อมปุ่ม Copy */}
           <div className="grid grid-cols-2 gap-2">
               <div>
                   <label className="block text-[10px] font-bold text-gray-500 mb-1">LINE UID (lineUid)</label>
@@ -1782,7 +1769,6 @@ transRefSnap.forEach(doc => {
                             <Icon name="check-circle" weight="fill" size={20}/>
                             บัญชีถูกสร้างแล้ว
                         </div>
-                        {/* 🌟 2. ลบปุ่ม รีเซ็ต/ลบรหัส เล็กๆ ตรงนี้ออกแล้ว 🌟 */}
                     </div>
                     
                     <div className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
@@ -1796,7 +1782,8 @@ transRefSnap.forEach(doc => {
                                     text: `เปลี่ยนรหัสเป็น "${newPassInput}" ?`,
                                     onConfirm: () => {
                                         setIsResetting(true);
-                                        apiCall('updateStudentPassword', form.id, form.firebaseUid, newPassInput) 
+                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
+                                        apiCall('updateStudentPassword', null, form.id, form.firebaseUid, newPassInput) 
                                             .then(() => {
                                                 setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' });
                                                 setNewPassInput('');
@@ -1835,7 +1822,6 @@ transRefSnap.forEach(doc => {
                   </p>
                   
                   <div className="flex flex-col gap-2">
-                      {/* 🌟 3. เปลี่ยนปุ่ม ลบบัญชี เป็น รีเซ็ตรหัสผ่าน 🌟 */}
                       {form.hasPassword && (
                           <button 
                             type="button"
@@ -1845,7 +1831,8 @@ transRefSnap.forEach(doc => {
                                     title: 'รีเซ็ตรหัสผ่าน',
                                     text: `ระบบจะทำการเคลียร์ข้อมูลรหัสผ่านเดิมของ ${form.id}@ptu.ac.th เพื่อให้นักศึกษาสามารถตั้งรหัสผ่านใหม่ได้ ยืนยันหรือไม่?`,
                                     onConfirm: () => {
-                                        apiCall('deleteStudentAuthEmail', form.id, form.firebaseUid)
+                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
+                                        apiCall('deleteStudentAuthEmail', null, form.id, form.firebaseUid)
                                             .then(() => {
                                                 setForm({...form, hasPassword: false, password: '', firebaseUid: ''});
                                                 setPopup({ type: 'success', title: 'รีเซ็ตสำเร็จ', text: 'รีเซ็ตรหัสผ่านเรียบร้อยแล้ว แอดมินสามารถตั้งรหัสผ่านใหม่ให้นักศึกษาได้ทันที' });
@@ -1869,7 +1856,8 @@ transRefSnap.forEach(doc => {
                                     title: 'ลบการเชื่อมต่อ LINE',
                                     text: 'คุณต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของนักศึกษาคนนี้ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินผ่าน LINE ได้อีก',
                                     onConfirm: () => {
-                                        apiCall('deleteStudentAuthLine', form.id, form.lineUid)
+                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
+                                        apiCall('deleteStudentAuthLine', null, form.id, form.lineUid)
                                             .then(() => {
                                                 setForm({...form, lineUid: '', userId: ''}); 
                                                 setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบการเชื่อมต่อ LINE ออกจากระบบเรียบร้อย' });
@@ -1891,7 +1879,6 @@ transRefSnap.forEach(doc => {
             {loading ? <><Icon name="spinner" className="animate-spin mr-2" weight="bold"/> กำลังบันทึก...</> : (initialData ? "บันทึกการแก้ไข" : "เพิ่มนักศึกษา")}
           </button>
 
-          {/* ป๊อปอัปแจ้งเตือนสวยๆ */}
           {popup && (
               <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
                   <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[320px] text-center transform animate-scale-in border border-gray-100">
