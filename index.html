@@ -4498,7 +4498,7 @@ transRefSnap.forEach(doc => {
       );
     };
 
-// --- Order Export Modal (V5: แก้ไขการซ่อนชื่อ, จัดขวา, ลดปัญหาสระซ้อน) ---
+// --- Order Export Modal (V5: แก้ไขการซ่อนชื่อ, จัดขวา, ลดปัญหาสระซ้อน + รองรับ Excel/CSV) ---
     const OrderExportModal = ({ isOpen, onClose, orders, students, adminContext }) => {
         const [config, setConfig] = useState({
             orderId: true, studentId: true, name: true, items: true, qty: true,
@@ -4507,8 +4507,9 @@ transRefSnap.forEach(doc => {
 
         const [selectedItemsFilter, setSelectedItemsFilter] = useState([]);
         const [isExporting, setIsExporting] = useState(false);
+        const [isExportingCSV, setIsExportingCSV] = useState(false); // สถานะโหลดสำหรับ CSV
 
-        // 🌟 แก้ไข: ดึงเฉพาะ "ชื่อสินค้าหลัก" (ตัดตัวเลือกสี/ไซส์ออก) เพื่อให้ตัวกรองดูง่าย ไม่ซ้ำซ้อน
+        // ดึงเฉพาะ "ชื่อสินค้าหลัก" (ตัดตัวเลือกสี/ไซส์ออก) เพื่อให้ตัวกรองดูง่าย ไม่ซ้ำซ้อน
         const uniqueProductNames = useMemo(() => {
             const names = new Set();
             orders.forEach(o => {
@@ -4541,13 +4542,100 @@ transRefSnap.forEach(doc => {
             );
         };
 
-        // 🛠️ ฟังก์ชันช่วยแก้ปัญหาสระภาษาไทยซ้อนใน jsPDF เบื้องต้น
         const fixThaiText = (text) => {
             if (!text) return '';
             return String(text).replace(/ำ/g, '\u0E4D\u0E32');
         };
 
         if (!isOpen) return null;
+
+        // ✅ ฟังก์ชันส่งออกเป็นไฟล์ Excel (CSV)
+        const handleExportCSV = () => {
+            setIsExportingCSV(true);
+            try {
+                // 1. สร้าง Header
+                const headers = ["ลำดับ"];
+                if (config.orderId) headers.push("เลขออเดอร์");
+                if (config.studentId) headers.push("รหัสนักศึกษา");
+                if (config.name) headers.push("ชื่อ-นามสกุล");
+                if (config.items) headers.push("รายการสินค้า");
+                if (config.qty) headers.push("จำนวนรวม");
+
+                // 2. กรองข้อมูล
+                const filteredOrders = orders.filter(o => {
+                    if (selectedItemsFilter.length === 0) return true;
+                    const itemsStr = String(o.items || '');
+                    return selectedItemsFilter.some(filter => itemsStr.includes(filter));
+                });
+
+                // 3. เตรียมข้อมูลแต่ละแถว (ใส่ \uFEFF ให้ Excel อ่านภาษาไทยออก)
+                let csvContent = "\uFEFF"; 
+                csvContent += headers.map(h => `"${h}"`).join(",") + "\n";
+
+                filteredOrders.forEach((o, index) => {
+                    const row = [index + 1];
+                    const student = students.find(s => String(s.id) === String(o.studentId));
+                    let sId = String(o.studentId);
+                    let sName = student?.name || 'ไม่ทราบชื่อ';
+
+                    sName = sName.replace(/^(นาย|นางสาว|นาง)\s*/, '');
+
+                    if (config.maskId && sId.length > 6) {
+                        sId = sId.substring(0, sId.length - 6) + "******";
+                    }
+                    
+                    if (config.maskName) {
+                        const parts = sName.trim().split(/\s+/); 
+                        if (parts.length > 1) {
+                            const lastName = parts.pop(); 
+                            if (lastName.length > 0) {
+                                sName = parts.join(' ') + ' ' + lastName.charAt(0) + '*****';
+                            }
+                        }
+                    }
+
+                    if (config.orderId) row.push(o.orderId || '-');
+                    if (config.studentId) row.push(`="${sId}"`); // ใส่ "=" เพื่อบังคับให้ Excel มองเป็นข้อความ ไม่ใช่ตัวเลข
+                    if (config.name) row.push(sName); 
+                    
+                    if (config.items) {
+                        const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
+                        // สำหรับ CSV ใช้เครื่องหมาย | ขั้นรายการแทนบรรทัดใหม่เพื่อให้อ่านในตารางง่ายขึ้น
+                        const formattedItems = rawItems.map(i => i.trim()).join(' | ');
+                        row.push(formattedItems);
+                    }
+                    
+                    if (config.qty) {
+                        const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
+                        const orderQty = rawItems.reduce((sum, i) => {
+                            const m = i.match(/x\s*(\d+)$/);
+                            return sum + (m ? parseInt(m[1], 10) : 1);
+                        }, 0);
+                        row.push(orderQty);
+                    }
+
+                    // นำข้อมูลแต่ละ Cell มาครอบด้วย " " เพื่อป้องกันปัญหาลูกน้ำ (,) ภายในข้อความ
+                    csvContent += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",") + "\n";
+                });
+
+                // 4. สร้างลิงก์สำหรับดาวน์โหลดไฟล์
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", `MedTech_Orders_${new Date().getTime()}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                onClose();
+            } catch (error) {
+                console.error("CSV Generation Error:", error);
+                alert("เกิดข้อผิดพลาดตอนสร้างไฟล์ Excel (CSV): " + error.message);
+            } finally {
+                setIsExportingCSV(false);
+            }
+        };
 
         const handleExport = async () => {
             setIsExporting(true);
@@ -4622,7 +4710,6 @@ transRefSnap.forEach(doc => {
                             if (config.studentId) row.push(sId);
                             if (config.name) row.push(fixThaiText(sName)); 
                             
-                            // 🌟 แก้ไข: จัดรูปแบบคอลัมน์รายการใน PDF ไม่ให้แตก
                             if (config.items) {
                                 const rawItems = String(o.items || '').split(/,\s*(?![^()]*\))/);
                                 const formattedItems = rawItems.map(i => i.trim()).join('\n');
@@ -4692,7 +4779,7 @@ transRefSnap.forEach(doc => {
         };
 
         return (
-            <Modal isOpen={isOpen} onClose={onClose} title="ส่งออกข้อมูลออเดอร์ (PDF)">
+            <Modal isOpen={isOpen} onClose={onClose} title="ส่งออกข้อมูลออเดอร์">
                 <div className="space-y-6">
                     <div>
                         <p className="text-[10px] font-black text-gray-400 uppercase mb-2 tracking-widest">1. เลือกข้อมูลที่ต้องการ</p>
@@ -4700,7 +4787,7 @@ transRefSnap.forEach(doc => {
                             {['orderId', 'studentId', 'name', 'items', 'qty'].map(k => (
                                 <label key={k} className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl cursor-pointer">
                                     <input type="checkbox" checked={config[k]} onChange={e => setConfig({...config, [k]: e.target.checked})} className="w-4 h-4" />
-                                    <span className="text-xs font-bold text-gray-700">{k==='orderId'?'เลขออเดอร์':k==='studentId'?'รหัสนักศึกษา':k==='name'?'ชื่อ':k==='items'?'รายการ':'จำนวน'}</span>
+                                    <span className="text-xs font-bold text-gray-700">{k==='orderId'?'เลขออเดอร์':k==='studentId'?'รหัสนักศึกษา':k==='name'?'ชื่อ':k==='items'?'รายการ':'จำนวนรวม'}</span>
                                 </label>
                             ))}
                         </div>
@@ -4731,9 +4818,16 @@ transRefSnap.forEach(doc => {
                         </div>
                     </div>
 
-                    <button onClick={handleExport} disabled={isExporting} className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition">
-                        {isExporting ? <><Icon name="spinner" className="animate-spin" weight="bold" size={20}/> กำลังโหลดและสร้าง PDF...</> : <><Icon name="file-pdf" weight="bold" size={20}/> สร้างไฟล์ PDF</>}
-                    </button>
+                    {/* ✅ เพิ่มปุ่มส่งออก Excel และแบ่งหน้าจอกับ PDF */}
+                    <div className="flex gap-3">
+                        <button onClick={handleExportCSV} disabled={isExporting || isExportingCSV} className="flex-1 py-3.5 bg-emerald-600 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-emerald-700 disabled:opacity-50 transition active:scale-95 shadow-emerald-200">
+                            {isExportingCSV ? <><Icon name="spinner" className="animate-spin" weight="bold" size={20}/> โหลด...</> : <><Icon name="file-csv" weight="bold" size={20}/> โหลดไฟล์ Excel</>}
+                        </button>
+                        
+                        <button onClick={handleExport} disabled={isExporting || isExportingCSV} className="flex-1 py-3.5 bg-primary text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition active:scale-95 shadow-blue-200">
+                            {isExporting ? <><Icon name="spinner" className="animate-spin" weight="bold" size={20}/> โหลด...</> : <><Icon name="file-pdf" weight="bold" size={20}/> โหลดไฟล์ PDF</>}
+                        </button>
+                    </div>
                 </div>
             </Modal>
         );
@@ -5485,6 +5579,24 @@ transRefSnap.forEach(doc => {
         }
       };
 
+      // ✅ เพิ่มฟังก์ชันรับลิงก์ใบเสร็จ
+      const handleReceiptUrl = () => {
+          const url = window.prompt("กรุณาวางลิงก์รูปใบเสร็จ (URL) \n*รองรับลิงก์จาก Google Drive หรือเว็บอื่นๆ:");
+          if (url && url.trim() !== '') {
+              setForm(prev => ({ ...prev, receiptUrl: url.trim(), receiptFile: null, isReceiptDeleted: false }));
+              setReceiptPreview(url.trim());
+          }
+      };
+
+      // ✅ เพิ่มฟังก์ชันรับลิงก์สลิป
+      const handleSlipUrl = () => {
+          const url = window.prompt("กรุณาวางลิงก์รูปสลิป (URL) \n*รองรับลิงก์จาก Google Drive หรือเว็บอื่นๆ:");
+          if (url && url.trim() !== '') {
+              setForm(prev => ({ ...prev, slipUrl: url.trim(), slipFile: null, isSlipDeleted: false }));
+              setSlipPreview(url.trim());
+          }
+      };
+
       const togglePerson = (name) => {
           if (selectedPersons.includes(name)) {
               setSelectedPersons(prev => prev.filter(n => n !== name));
@@ -5595,7 +5707,7 @@ transRefSnap.forEach(doc => {
               {receiptPreview ? (
                 <div className="relative group">
                   <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                    <img src={receiptPreview} className="w-full h-full object-contain bg-white" />
+                    <img src={getDirectImageUrl(receiptPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                   </div>
                   <div className="absolute top-2 right-2 flex gap-2">
                     <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" /></label>
@@ -5603,10 +5715,17 @@ transRefSnap.forEach(doc => {
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center h-32 w-full border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6"><Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/><p className="text-[10px] text-gray-500 font-medium">กดแนบใบเสร็จ</p></div>
-                  <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" />
-                </label>
+                <div className="flex gap-2 h-32 w-full">
+                    <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                        <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                        <p className="text-[10px] text-gray-500 font-medium">อัปโหลด</p>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" />
+                    </label>
+                    <button type="button" onClick={handleReceiptUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                        <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                        <p className="text-[10px] text-gray-500 font-medium">วางลิงก์</p>
+                    </button>
+                </div>
               )}
             </div>
 
@@ -5616,7 +5735,7 @@ transRefSnap.forEach(doc => {
               {slipPreview ? (
                 <div className="relative group">
                   <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                    <img src={slipPreview} className="w-full h-full object-contain bg-white" />
+                    <img src={getDirectImageUrl(slipPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                   </div>
                   <div className="absolute top-2 right-2 flex gap-2">
                     <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" /></label>
@@ -5624,10 +5743,17 @@ transRefSnap.forEach(doc => {
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center h-32 w-full border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6"><Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/><p className="text-[10px] text-gray-500 font-medium">กดแนบสลิป</p></div>
-                  <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" />
-                </label>
+                <div className="flex gap-2 h-32 w-full">
+                    <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                        <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                        <p className="text-[10px] text-gray-500 font-medium">อัปโหลด</p>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" />
+                    </label>
+                    <button type="button" onClick={handleSlipUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                        <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                        <p className="text-[10px] text-gray-500 font-medium">วางลิงก์</p>
+                    </button>
+                </div>
               )}
             </div>
           </div>
