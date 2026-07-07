@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Admin Medtech System</title>
-  <link rel="icon" type="image/png" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
-    <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
+  <link rel="icon" type="image/png" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
+    <link rel="apple-touch-icon" href="https://firebasestorage.googleapis.com/v0/b/medtechptu67-payment.firebasestorage.app/o/ADMUN-LOGO.png?alt=media&token=fc0c76d6-cc05-41c0-94b9-f3ad2acd6c90">
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -474,9 +474,21 @@ transRefSnap.forEach(doc => {
                     if (form.slipFile) {
                         finalSlipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-HIST-${form.billId}-${Date.now()}.jpg` });
                     }
-                    await db.collection('users').doc(String(form.studentId)).collection('history').doc(String(form.billId)).update({ 
-                        item: form.item, total: Number(form.total), payDate: new Date(form.payDate).toISOString(), slipUrl: finalSlipUrl 
-                    });
+
+                    // 🌟 เปลี่ยนจาก .update() เป็น .set(..., { merge: true }) เพื่อความปลอดภัย
+                    await db.collection('users')
+                            .doc(String(form.studentId))
+                            .collection('history')
+                            .doc(String(form.billId))
+                            .set({ 
+                                item: form.item, 
+                                total: Number(form.total), 
+                                payDate: new Date(form.payDate).toISOString(), 
+                                slipUrl: finalSlipUrl,
+                                studentId: String(form.studentId),
+                                billId: String(form.billId)
+                            }, { merge: true }); // ✅ merge: true คือการสั่งให้อัปเดตเฉพาะฟิลด์ที่ส่งไป
+
                     return await apiCall('getAllData', currentAdmin);
                 }
 
@@ -1642,7 +1654,7 @@ transRefSnap.forEach(doc => {
         );
     };
 
-    // --- Student Form (อัปเดตระบบจัดการสิทธิ์, แก้ Error apiCall พารามิเตอร์ขยับ) ---
+    // --- Student Form (อัปเดตระบบจัดการสิทธิ์, UID Read-only, เปลี่ยนลบเป็นรีเซ็ต) ---
     const StudentForm = ({ onSubmit, loading, initialData = null }) => {
       const AVAILABLE_PERMISSIONS = [
         { id: 'home', label: 'หน้าแรก (Home)' },
@@ -1687,6 +1699,7 @@ transRefSnap.forEach(doc => {
           onSubmit(submitData);
       };
 
+      // 🌟 ฟังก์ชันสำหรับคัดลอก UID 🌟
       const copyToClipboard = (text, label) => {
           if (!text) return;
           navigator.clipboard.writeText(text).then(() => {
@@ -1701,7 +1714,7 @@ transRefSnap.forEach(doc => {
           <div><label className="block text-sm font-medium text-gray-700 mb-1">รหัสนักศึกษา</label><input type="text" name="id" value={form.id} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary bg-gray-50" readOnly={!!initialData} /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label><input type="text" name="name" value={form.name} onChange={handleChange} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
           
-          {/* ช่องแสดง UID พร้อมปุ่ม Copy */}
+          {/* 🌟 1. ปรับช่อง UID ให้เป็นแบบ Read-only และมีปุ่ม Copy 🌟 */}
           <div className="grid grid-cols-2 gap-2">
               <div>
                   <label className="block text-[10px] font-bold text-gray-500 mb-1">LINE UID (lineUid)</label>
@@ -1769,6 +1782,7 @@ transRefSnap.forEach(doc => {
                             <Icon name="check-circle" weight="fill" size={20}/>
                             บัญชีถูกสร้างแล้ว
                         </div>
+                        {/* 🌟 2. ลบปุ่ม รีเซ็ต/ลบรหัส เล็กๆ ตรงนี้ออกแล้ว 🌟 */}
                     </div>
                     
                     <div className="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
@@ -1782,8 +1796,7 @@ transRefSnap.forEach(doc => {
                                     text: `เปลี่ยนรหัสเป็น "${newPassInput}" ?`,
                                     onConfirm: () => {
                                         setIsResetting(true);
-                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
-                                        apiCall('updateStudentPassword', null, form.id, form.firebaseUid, newPassInput) 
+                                        apiCall('updateStudentPassword', form.id, form.firebaseUid, newPassInput) 
                                             .then(() => {
                                                 setPopup({ type: 'success', title: 'สำเร็จ', text: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' });
                                                 setNewPassInput('');
@@ -1822,6 +1835,7 @@ transRefSnap.forEach(doc => {
                   </p>
                   
                   <div className="flex flex-col gap-2">
+                      {/* 🌟 3. เปลี่ยนปุ่ม ลบบัญชี เป็น รีเซ็ตรหัสผ่าน 🌟 */}
                       {form.hasPassword && (
                           <button 
                             type="button"
@@ -1831,8 +1845,7 @@ transRefSnap.forEach(doc => {
                                     title: 'รีเซ็ตรหัสผ่าน',
                                     text: `ระบบจะทำการเคลียร์ข้อมูลรหัสผ่านเดิมของ ${form.id}@ptu.ac.th เพื่อให้นักศึกษาสามารถตั้งรหัสผ่านใหม่ได้ ยืนยันหรือไม่?`,
                                     onConfirm: () => {
-                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
-                                        apiCall('deleteStudentAuthEmail', null, form.id, form.firebaseUid)
+                                        apiCall('deleteStudentAuthEmail', form.id, form.firebaseUid)
                                             .then(() => {
                                                 setForm({...form, hasPassword: false, password: '', firebaseUid: ''});
                                                 setPopup({ type: 'success', title: 'รีเซ็ตสำเร็จ', text: 'รีเซ็ตรหัสผ่านเรียบร้อยแล้ว แอดมินสามารถตั้งรหัสผ่านใหม่ให้นักศึกษาได้ทันที' });
@@ -1856,8 +1869,7 @@ transRefSnap.forEach(doc => {
                                     title: 'ลบการเชื่อมต่อ LINE',
                                     text: 'คุณต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของนักศึกษาคนนี้ออกจากระบบใช่หรือไม่? นักศึกษาจะไม่สามารถล็อกอินผ่าน LINE ได้อีก',
                                     onConfirm: () => {
-                                        // ✅ แก้ไข: เติม null เข้าไปข้างหน้า
-                                        apiCall('deleteStudentAuthLine', null, form.id, form.lineUid)
+                                        apiCall('deleteStudentAuthLine', form.id, form.lineUid)
                                             .then(() => {
                                                 setForm({...form, lineUid: '', userId: ''}); 
                                                 setPopup({ type: 'success', title: 'ลบสำเร็จ', text: 'ลบการเชื่อมต่อ LINE ออกจากระบบเรียบร้อย' });
@@ -1879,6 +1891,7 @@ transRefSnap.forEach(doc => {
             {loading ? <><Icon name="spinner" className="animate-spin mr-2" weight="bold"/> กำลังบันทึก...</> : (initialData ? "บันทึกการแก้ไข" : "เพิ่มนักศึกษา")}
           </button>
 
+          {/* ป๊อปอัปแจ้งเตือนสวยๆ */}
           {popup && (
               <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
                   <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[320px] text-center transform animate-scale-in border border-gray-100">
@@ -3588,149 +3601,117 @@ transRefSnap.forEach(doc => {
     
 
     // --- Helper: Image Gallery (รองรับ image, image2, image3...) ---
-    import React, { useMemo, useState, useEffect, useId } from 'react';
-
-const ProductImageGallery = ({ product }) => {
-    const images = useMemo(() => {
-        if (!product) return [];
-        const imgs = [];
-        
-        // รองรับของเก่าที่มี " | "
-        if (product.image && product.image.includes(' | ')) {
-            imgs.push(...product.image.split(' | ').map(s => s.trim()).filter(s => s.startsWith('http')));
-        } else {
-            // รองรับโครงสร้างใหม่ (image, image2, image3...)
-            if (product.image && product.image.startsWith('http')) imgs.push(product.image);
-            let i = 2;
-            // เช็คเผื่อกรณีข้ามเลข เช่น image2 ไม่มี แต่มี image3 (ป้องกัน Infinite loop เผื่อข้อมูลพลาด)
-            while (i <= 10) { 
-                if (product[`image${i}`] && product[`image${i}`].startsWith('http')) {
-                    imgs.push(product[`image${i}`]);
+    const ProductImageGallery = ({ product }) => {
+        const images = useMemo(() => {
+            if (!product) return [];
+            const imgs = [];
+            
+            // รองรับของเก่าที่มี " | "
+            if (product.image && product.image.includes(' | ')) {
+                imgs.push(...product.image.split(' | ').map(s=>s.trim()).filter(s => s.startsWith('http')));
+            } else {
+                // รองรับโครงสร้างใหม่ (image, image2, image3...)
+                if (product.image && product.image.startsWith('http')) imgs.push(product.image);
+                let i = 2;
+                while(product[`image${i}`]) { 
+                    if (product[`image${i}`].startsWith('http')) imgs.push(product[`image${i}`]); 
+                    i++; 
                 }
-                i++;
             }
-        }
-        return imgs;
-    }, [product]);
+            return imgs;
+        }, [product]);
 
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [brokenImages, setBrokenImages] = useState({}); // เก็บสถานะรูปที่โหลดไม่ขึ้น
+        const [currentIndex, setCurrentIndex] = useState(0);
 
-    useEffect(() => { 
-        setCurrentIndex(0); 
-        setBrokenImages({}); // รีเซ็ตเมื่อเปลี่ยนสินค้า
-    }, [images]);
+        useEffect(() => { setCurrentIndex(0); }, [images]);
 
-    if (images.length === 0) {
-        return (
-            <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-300 min-h-[300px]">
-                <Icon name="image" size={32} />
-            </div>
-        );
-    }
-
-    const isCurrentImgBroken = brokenImages[currentIndex];
-
-    return (
-        <div className="relative w-full h-full group bg-gray-100 min-h-[300px] flex items-center justify-center overflow-hidden">
-            {isCurrentImgBroken ? (
-                <div className="flex flex-col items-center text-gray-400">
-                    <Icon name="image-broken" size={40} className="mb-2"/>
-                    <span className="text-xs">โหลดรูปภาพไม่สำเร็จ</span>
+        if (images.length === 0) {
+            return (
+                <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-300">
+                    <Icon name="image" size={32} />
                 </div>
-            ) : (
+            );
+        }
+
+        return (
+            <div className="relative w-full h-full group bg-gray-100">
                 <img 
                     src={images[currentIndex]} 
                     className="w-full h-full object-cover" 
                     alt={`รูปที่ ${currentIndex + 1}`}
                     referrerPolicy="no-referrer"
-                    onError={() => { 
-                        setBrokenImages(prev => ({ ...prev, [currentIndex]: true }));
-                    }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
                 />
-            )}
-            
-            <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full z-10">
-                {currentIndex + 1} / {images.length}
+                <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+                    {currentIndex + 1} / {images.length}
+                </div>
+                {images.length > 1 && (
+                    <>
+                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev - 1 + images.length) % images.length)}} className="absolute left-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-left" weight="bold" className="text-white drop-shadow-md"/></button>
+                        <button onClick={(e) => {e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % images.length)}} className="absolute right-0 top-0 bottom-0 px-2 hover:bg-black/10 transition"><Icon name="caret-right" weight="bold" className="text-white drop-shadow-md"/></button>
+                    </>
+                )}
             </div>
-            
-            {images.length > 1 && (
-                <>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setCurrentIndex((prev) => (prev - 1 + images.length) % images.length) }} 
-                        className="absolute left-0 top-0 bottom-0 px-3 hover:bg-black/10 transition z-10"
-                    >
-                        <Icon name="caret-left" weight="bold" className="text-white drop-shadow-md"/>
-                    </button>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % images.length) }} 
-                        className="absolute right-0 top-0 bottom-0 px-3 hover:bg-black/10 transition z-10"
-                    >
-                        <Icon name="caret-right" weight="bold" className="text-white drop-shadow-md"/>
-                    </button>
-                </>
-            )}
-        </div>
-    );
-};
+        );
+    };
 
-// --- Helper Component: Image Manager ---
-const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew }) => {
-    const inputId = useId(); // ใช้ useId ของ React แทน Math.random()
+    // --- 1. Helper Component: Image Manager ---
+    const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew }) => {
+        const inputId = `file-input-${Math.random().toString(36).substr(2, 9)}`;
 
-    return (
-        <div className="space-y-3">
-            <div className="flex justify-between items-end px-1">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</label>
-                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                    {existingUrls.length + newImages.length} รูป
-                </span>
-            </div>
-            
-            <div className="grid grid-cols-4 gap-3">
-                {/* 1. รูปเดิม (Existing) */}
-                {existingUrls.map((url, idx) => (
-                    <div key={`exist-${idx}`} className="relative aspect-square rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-all bg-gray-100">
-                        <img 
-                            src={url.trim()} // สมมติว่ามีฟังก์ชันครอบข้างนอกอยู่แล้ว หรือใส่ครอบตรงนี้ได้เลย
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                            alt="old" 
-                            referrerPolicy="no-referrer" 
-                            onError={(e) => { e.target.style.opacity = '0.3'; }}
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                            <button type="button" onClick={() => onRemoveExisting(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
-                                <Icon name="trash" weight="bold" size={16}/>
-                            </button>
+        return (
+            <div className="space-y-3">
+                <div className="flex justify-between items-end px-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</label>
+                    <span className="text-[10px] font-bold text-primary bg-indigo-50 px-2 py-0.5 rounded-full">
+                        {existingUrls.length + newImages.length} รูป
+                    </span>
+                </div>
+                
+                <div className="grid grid-cols-4 gap-3">
+                    {/* 1. รูปเดิม (Existing) */}
+                    {existingUrls.map((url, idx) => (
+                        <div key={`exist-${idx}`} className="relative aspect-square rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-all bg-gray-100">
+                            <img 
+                                src={getDirectImageUrl(url.trim())} 
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                alt="old" 
+                                referrerPolicy="no-referrer" 
+                                onError={(e) => { e.target.style.opacity = '0.3'; }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                                <button type="button" onClick={() => onRemoveExisting(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
+                                    <Icon name="trash" weight="bold" size={16}/>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
 
-                {/* 2. รูปใหม่ (New Base64) */}
-                {newImages.map((img, idx) => (
-                    <div key={`new-${idx}`} className="relative aspect-square rounded-2xl border-2 border-indigo-400 overflow-hidden group shadow-md">
-                        <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover" alt="new" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                            <button type="button" onClick={() => onRemoveNew(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
-                                <Icon name="trash" weight="bold" size={16}/>
-                            </button>
+                    {/* 2. รูปใหม่ (New Base64) */}
+                    {newImages.map((img, idx) => (
+                        <div key={`new-${idx}`} className="relative aspect-square rounded-2xl border-2 border-indigo-400 overflow-hidden group shadow-md">
+                            <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover" alt="new" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                                <button type="button" onClick={() => onRemoveNew(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
+                                    <Icon name="trash" weight="bold" size={16}/>
+                                </button>
+                            </div>
+                            <div className="absolute bottom-0 inset-x-0 bg-indigo-500 text-white text-[8px] font-bold text-center py-0.5">NEW</div>
                         </div>
-                        <div className="absolute bottom-0 inset-x-0 bg-indigo-500 text-white text-[8px] font-bold text-center py-0.5">NEW</div>
-                    </div>
-                ))}
+                    ))}
 
-                {/* 3. ปุ่มเพิ่ม (+) */}
-                <label htmlFor={inputId} className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/50 transition-all group">
-                    <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
-                        <Icon name="plus" weight="bold" className="text-gray-400 group-hover:text-indigo-600"/>
-                    </div>
-                    <span className="text-[9px] font-bold text-gray-400 group-hover:text-indigo-600">เพิ่มรูป</span>
-                    <input id={inputId} type="file" multiple accept="image/*" className="hidden" onChange={onAddNew} />
-                </label>
+                    {/* 3. ปุ่มเพิ่ม (+) */}
+                    <label htmlFor={inputId} className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50/50 transitionGroup group">
+                        <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
+                            <Icon name="plus" weight="bold" className="text-gray-400 group-hover:text-primary"/>
+                        </div>
+                        <span className="text-[9px] font-bold text-gray-400 group-hover:text-primary">เพิ่มรูป</span>
+                        <input id={inputId} type="file" multiple accept="image/*" className="hidden" onChange={onAddNew} />
+                    </label>
+                </div>
             </div>
-        </div>
-    );
-};
+        );
+    };
               
     // --- Product Modal (อัปเดต: เปลี่ยนเป็นแบบ Slide-in Drawer จากด้านขวา) ---
     const ProductModal = ({ isOpen, onClose, product, onSave, loading, adminContext, availableCohorts, zIndex = "z-[110]" }) => {
