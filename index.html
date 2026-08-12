@@ -2135,21 +2135,28 @@ transRefSnap.forEach(doc => {
                         canvas.width = width; canvas.height = height;
                         ctx.drawImage(img, 0, 0, width, height);
                         const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7).split(',')[1];
-                        if (mode === 'edit') apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount, editTargetUrl).then(onSuccess).catch(onFailure); 
-                        else apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount).then(onSuccess).catch(onFailure); 
+                        
+                        if (mode === 'edit') {
+                            apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount, editTargetUrl).then(onSuccess).catch(onFailure); 
+                        } else {
+                            apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount).then(onSuccess).catch(onFailure); 
+                        }
                     };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(uploadFile);
             } 
-            else if (previewUrl && !editTargetUrl) {
-                // ✅ กรณีเพิ่มใหม่ด้วยลิงก์ตรง (ไม่มีไฟล์ uploadFile และไม่ใช่โหมด edit)
-                apiCall('uploadQrImage', currentAdmin, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
-            } 
-            else if (mode === 'edit' && editTargetUrl) { 
-                // ✅ โหมดแก้ไข (อัปเดตยอดเงิน หรือ ลิงก์รูปถูกเปลี่ยน)
-                const finalUrl = previewUrl !== editTargetUrl ? previewUrl : editTargetUrl;
-                apiCall('updateQrCode', currentAdmin, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
+            else if (previewUrl) {
+                // ✅ กรณีไม่มีไฟล์อัปโหลด (วางลิงก์)
+                if (mode === 'add' || !editTargetUrl) {
+                    apiCall('uploadQrImage', currentAdmin, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
+                } else {
+                    const finalUrl = previewUrl !== editTargetUrl ? previewUrl : editTargetUrl;
+                    apiCall('updateQrCode', currentAdmin, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
+                }
+            } else {
+                setIsUploading(false);
+                alert("กรุณาอัปโหลดรูปหรือวางลิงก์");
             }
         };
 
