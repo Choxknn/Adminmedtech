@@ -2085,7 +2085,7 @@ transRefSnap.forEach(doc => {
     };
 
     // --- QR Code Management Modal (อัปเดตให้รองรับลิงก์ Drive) ---
-    const QrCodeModal = ({ isOpen, onClose, qrUrls, onUploadSuccess, onDelete, loading, initialEditQr }) => {
+    const QrCodeModal = ({ isOpen, onClose, qrUrls, onUploadSuccess, onDelete, loading, initialEditQr, adminContext }) => {
         const [mode, setMode] = useState('list'); 
         const [uploadFile, setUploadFile] = useState(null);
         const [previewUrl, setPreviewUrl] = useState('');
@@ -2137,9 +2137,9 @@ transRefSnap.forEach(doc => {
                         const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7).split(',')[1];
                         
                         if (mode === 'edit') {
-                            apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount, editTargetUrl).then(onSuccess).catch(onFailure); 
+                            apiCall('uploadQrImage', adminContext, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount, editTargetUrl).then(onSuccess).catch(onFailure); 
                         } else {
-                            apiCall('uploadQrImage', currentAdmin, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount).then(onSuccess).catch(onFailure); 
+                            apiCall('uploadQrImage', adminContext, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount).then(onSuccess).catch(onFailure); 
                         }
                     };
                     img.src = e.target.result;
@@ -2149,10 +2149,10 @@ transRefSnap.forEach(doc => {
             else if (previewUrl) {
                 // ✅ กรณีไม่มีไฟล์อัปโหลด (วางลิงก์)
                 if (mode === 'add' || !editTargetUrl) {
-                    apiCall('uploadQrImage', currentAdmin, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
+                    apiCall('uploadQrImage', adminContext, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
                 } else {
                     const finalUrl = previewUrl !== editTargetUrl ? previewUrl : editTargetUrl;
-                    apiCall('updateQrCode', currentAdmin, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
+                    apiCall('updateQrCode', adminContext, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
                 }
             } else {
                 setIsUploading(false);
