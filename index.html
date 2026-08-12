@@ -221,13 +221,14 @@ transRefSnap.forEach(doc => {
                         data.config = { maintenanceMsg: sysData.maintenanceMsg || '' };
                     }
 
-                    // ✅ ดึง QR Code (ถ้าส่วนกลางให้ดึงทั้งหมดที่แยกตามชั้นปีมาโชว์รวมกัน)
+                    // ✅ ดึง QR Code (รองรับทั้งแยกชั้นปี และ ส่วนกลาง)
                     data.amount.qrCodes = [];
                     if (activeCohort === 'ALL') {
                         const configSnap = await db.collection('config').get();
                         configSnap.forEach(doc => {
-                            if (doc.id.startsWith('qrMap_') && doc.data().codes) {
-                                const cohortStr = doc.id.replace('qrMap_', '');
+                            // 🌟 แก้ตรงนี้: ให้ดึงทั้ง qrMap (ส่วนกลาง) และ qrMap_ (แยกชั้นปี)
+                            if ((doc.id === 'qrMap' || doc.id.startsWith('qrMap_')) && doc.data().codes) {
+                                const cohortStr = doc.id === 'qrMap' ? 'ALL' : doc.id.replace('qrMap_', '');
                                 const codes = doc.data().codes.map(c => ({...c, cohort: cohortStr}));
                                 data.amount.qrCodes.push(...codes);
                             }
