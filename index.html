@@ -2215,9 +2215,9 @@ transRefSnap.forEach(doc => {
                         </div>
                         <div className="flex gap-3 pt-2">
                             <button onClick={initialEditQr ? onClose : goBack} disabled={isUploading} className="flex-1 py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition">ยกเลิก</button>
-                            <button onClick={handleSave} disabled={loading || isUploading || (!uploadFile && mode === 'add') || !newAmount} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
-                                {isUploading ? <><Icon name="spinner" className="animate-spin"/> กำลังบันทึก...</> : "บันทึกข้อมูล"}
-                            </button>
+                            <button onClick={handleSave} disabled={loading || isUploading || (!uploadFile && !previewUrl && mode === 'add') || !newAmount} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
+    {isUploading ? <><Icon name="spinner" className="animate-spin"/> กำลังบันทึก...</> : "บันทึกข้อมูล"}
+</button>
                         </div>
                     </div>
                 )}
