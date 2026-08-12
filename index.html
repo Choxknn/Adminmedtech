@@ -648,8 +648,13 @@ transRefSnap.forEach(doc => {
 
                 // 💳 จัดการ QR Code
                 case 'uploadQrImage': {
-                    const [b64, mime, fName, amt, oldUrl] = args; 
-                    const newUrl = await callGAS('uploadImage', { base64: b64, fileName: fName });
+                    const [b64, mime, fName, amt, oldUrl, directUrl] = args; 
+                    
+                    // ✅ ถ้ารับ directUrl มา ให้ใช้ลิงก์นั้นเลย ถ้าไม่มีค่อยเรียก GAS อัปโหลด Base64
+                    let newUrl = directUrl;
+                    if (b64) {
+                        newUrl = await callGAS('uploadImage', { base64: b64, fileName: fName });
+                    }
                     
                     const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
@@ -1464,6 +1469,15 @@ transRefSnap.forEach(doc => {
             setPreviewImage(null);
         };
 
+        // ✅ ฟังก์ชันใหม่: สำหรับวางลิงก์รูปสลิป
+        const handleSlipUrl = () => {
+            const url = window.prompt("กรุณาวางลิงก์รูปสลิป (URL) \n*รองรับลิงก์จาก Google Drive หรือเว็บอื่นๆ:");
+            if (url && url.trim() !== '') {
+                setFormData(prev => ({ ...prev, slipUrl: url.trim(), slipFile: null, isSlipDeleted: false }));
+                setPreviewImage(url.trim());
+            }
+        };
+
         const toggleStudent = (id) => {
             if (selectedStudentIds.includes(id)) {
                 setSelectedStudentIds(prev => prev.filter(sid => sid !== id));
@@ -1602,18 +1616,26 @@ transRefSnap.forEach(doc => {
                     {previewImage ? (
                         <div className="relative group">
                             <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                                <img src={previewImage} alt="Slip Preview" className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
+                                <img src={getDirectImageUrl(previewImage)} alt="Slip Preview" className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                             </div>
                             <div className="absolute top-2 right-2 flex gap-2">
                                 <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={handleFileChange} className="hidden" /></label>
+                                <button type="button" onClick={handleSlipUrl} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-indigo-600 shadow-md hover:bg-indigo-50 transition" title="เปลี่ยนเป็นลิงก์"><Icon name="link" weight="bold" size={16}/></button>
                                 <button type="button" onClick={handleDeleteSlip} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50 transition"><Icon name="trash" weight="bold" size={16}/></button>
                             </div>
                         </div>
                     ) : (
-                        <label className="flex flex-col items-center justify-center h-24 w-full border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
-                            <div className="flex flex-col items-center justify-center pt-5 pb-6"><Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/><p className="text-[10px] text-gray-500 font-medium">กดเพื่ออัปโหลดรูปภาพ</p></div>
-                            <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-                        </label>
+                        <div className="flex gap-2 h-24 w-full">
+                            <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                                <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                                <p className="text-[10px] text-gray-500 font-medium">อัปโหลดไฟล์</p>
+                                <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                            </label>
+                            <button type="button" onClick={handleSlipUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
+                                <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
+                                <p className="text-[10px] text-gray-500 font-medium">วางลิงก์</p>
+                            </button>
+                        </div>
                     )}
                 </div>
                 
@@ -2079,6 +2101,16 @@ transRefSnap.forEach(doc => {
 
         const resetForm = () => { setUploadFile(null); setPreviewUrl(''); setNewAmount(''); setEditTargetUrl(null); setIsUploading(false); };
         const handleFileChange = (e) => { const file = e.target.files[0]; if (file) { setUploadFile(file); const reader = new FileReader(); reader.onloadend = () => setPreviewUrl(reader.result); reader.readAsDataURL(file); } };
+        
+        // ✅ เพิ่มฟังก์ชันรับลิงก์สำหรับ QR
+        const handleAddUrl = () => {
+            const url = window.prompt("กรุณาวางลิงก์รูปภาพ QR Code (URL) \n*รองรับลิงก์จาก Google Drive หรือเว็บอื่นๆ:");
+            if (url && url.trim() !== '') {
+                setPreviewUrl(url.trim());
+                setUploadFile(null); // ล้างไฟล์ที่อัปโหลด (ถ้ามี) เพื่อบังคับใช้ URL
+            }
+        };
+
         const startEdit = (qr) => { setMode('edit'); setEditTargetUrl(qr.url); setNewAmount(qr.amount); setPreviewUrl(qr.url); setUploadFile(null); };
         const goToAdd = () => { resetForm(); setMode('add'); };
         const goBack = () => { resetForm(); setMode('list'); };
@@ -2109,8 +2141,15 @@ transRefSnap.forEach(doc => {
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(uploadFile);
-            } else if (mode === 'edit' && editTargetUrl) { 
-                apiCall('updateQrCode', currentAdmin, editTargetUrl, editTargetUrl, newAmount).then(onSuccess).catch(onFailure); 
+            } 
+            else if (previewUrl && !editTargetUrl) {
+                // ✅ กรณีเพิ่มใหม่ด้วยลิงก์ตรง (ไม่มีไฟล์ uploadFile และไม่ใช่โหมด edit)
+                apiCall('uploadQrImage', currentAdmin, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
+            } 
+            else if (mode === 'edit' && editTargetUrl) { 
+                // ✅ โหมดแก้ไข (อัปเดตยอดเงิน หรือ ลิงก์รูปถูกเปลี่ยน)
+                const finalUrl = previewUrl !== editTargetUrl ? previewUrl : editTargetUrl;
+                apiCall('updateQrCode', currentAdmin, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
             }
         };
 
@@ -2143,21 +2182,29 @@ transRefSnap.forEach(doc => {
                     <div className="space-y-6 animate-scale-in">
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700">รูปภาพ QR Code</label>
-                            <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 transition relative cursor-pointer group bg-white">
-                                <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                                {previewUrl ? (
+                            {previewUrl ? (
+                                <div className="border-2 border-gray-100 rounded-xl p-4 text-center relative group bg-white shadow-sm">
                                     <div className="relative">
-                                        {/* ✅ จุดที่ 2: แสดงรูปพรีวิวตอนแก้ไข */}
-                                        <img src={getDirectImageUrl(previewUrl)} className="h-40 object-contain mx-auto rounded-lg shadow-sm" />
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-lg text-white font-medium backdrop-blur-sm"><Icon name="camera" className="mr-2"/> เปลี่ยนรูป</div>
+                                        <img src={getDirectImageUrl(previewUrl)} className="h-40 object-contain mx-auto rounded-lg" alt="QR Preview" />
+                                        <div className="absolute top-0 right-0 flex gap-2 z-20">
+                                            <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={handleFileChange} className="hidden" /></label>
+                                            <button type="button" onClick={handleAddUrl} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-indigo-600 shadow-md hover:bg-indigo-50 transition" title="เปลี่ยนลิงก์"><Icon name="link" weight="bold" size={16}/></button>
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="py-6">
-                                        <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3"><Icon name="upload-simple" size={24} weight="bold"/></div>
-                                        <p className="text-sm text-gray-600 font-medium">แตะเพื่อเลือกรูปภาพ</p>
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2 h-32 w-full">
+                                    <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group relative">
+                                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                        <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform"><Icon name="upload-simple" size={24} weight="bold"/></div>
+                                        <p className="text-xs text-gray-500 font-medium">อัปโหลดไฟล์</p>
+                                    </label>
+                                    <button type="button" onClick={handleAddUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group z-20 relative">
+                                        <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform"><Icon name="link" size={24} weight="bold"/></div>
+                                        <p className="text-xs text-gray-500 font-medium">วางลิงก์</p>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700">ระบุยอดเงิน (บาท)</label>
