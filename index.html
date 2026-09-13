@@ -149,6 +149,101 @@
             };
 
             switch(action) {
+                // ดึงข้อมูลเฉพาะส่วนที่ต้องการ (Lazy Load) เพื่อประหยัดโควต้า
+                case 'getDataBySection': {
+                    const sections = args[0]; // เช่น ['core', 'bills']
+                    const allowedStudentIds = args[1] || null; // เอาไว้กรองข้อมูลถ้ามี
+                    const resultData = {};
+
+                    // 1. ดึงข้อมูลพื้นฐาน (Core: นักศึกษา, ตั้งค่า, QR)
+                    if (sections.includes('core')) {
+                        resultData.students = [];
+                        resultData.allCohorts = [];
+                        resultData.amount = { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' };
+                        resultData.systemStatus = 'OFF';
+                        resultData.announcement = '';
+
+                        const usersSnap = await db.collection('users').get();
+                        const cohortsSet = new Set();
+                        usersSnap.forEach(doc => {
+                            const stuCohort = String(doc.id).substring(0, 2);
+                            if (stuCohort.length === 2 && !isNaN(stuCohort)) cohortsSet.add(stuCohort);
+                            if (isStudentInCohort(doc.id)) resultData.students.push({ id: doc.id, ...doc.data() });
+                        });
+                        resultData.allCohorts = Array.from(cohortsSet).sort((a, b) => b - a);
+
+                        const sysSnap = await db.collection('config').doc('system').get();
+                        if(sysSnap.exists) {
+                            const sysData = sysSnap.data();
+                            resultData.systemStatus = sysData.maintenance || 'OFF';
+                            resultData.announcement = sysData[`announcement_${activeCohort}`] || sysData.announcement || '';
+                            resultData.config = { maintenanceMsg: sysData.maintenanceMsg || '' };
+                        }
+
+                        // ดึง QR 
+                        if (activeCohort === 'ALL') {
+                            const configSnap = await db.collection('config').get();
+                            configSnap.forEach(doc => {
+                                if ((doc.id === 'qrMap' || doc.id.startsWith('qrMap_')) && doc.data().codes) {
+                                    const cohortStr = doc.id === 'qrMap' ? 'ALL' : doc.id.replace('qrMap_', '');
+                                    const codes = doc.data().codes.map(c => ({...c, cohort: cohortStr}));
+                                    resultData.amount.qrCodes.push(...codes);
+                                }
+                            });
+                        } else {
+                            const qrSnap = await db.collection('config').doc(`qrMap_${activeCohort}`).get();
+                            if(qrSnap.exists && qrSnap.data().codes) resultData.amount.qrCodes = qrSnap.data().codes.map(c => ({...c, cohort: activeCohort}));
+                        }
+                        if(resultData.amount.qrCodes.length > 0) resultData.amount.qrUrl = resultData.amount.qrCodes[resultData.amount.qrCodes.length-1].url;
+                    }
+
+                    // 2. ดึงข้อมูลบิล
+                    if (sections.includes('bills')) {
+                        resultData.bills = [];
+                        const validIds = sections.includes('core') ? resultData.students.map(s => s.id) : allowedStudentIds;
+                        const billsSnap = await db.collectionGroup('bills').get();
+                        billsSnap.forEach(doc => {
+                            const b = doc.data();
+                            if (!validIds || validIds.includes(String(b.studentId))) {
+                                resultData.bills.push(b);
+                            }
+                        });
+                    }
+
+                    // 3. ดึงประวัติชำระเงิน (🌟 สำคัญ: จำกัดแค่ 500 รายการล่าสุด ป้องกันโควต้าล้น)
+                    if (sections.includes('history')) {
+                        resultData.history = [];
+                        const validIds = sections.includes('core') ? resultData.students.map(s => s.id) : allowedStudentIds;
+                        const histSnap = await db.collectionGroup('history').orderBy('payDate', 'desc').limit(500).get();
+                        histSnap.forEach(doc => {
+                            const h = doc.data();
+                            if (!validIds || validIds.includes(String(h.studentId))) {
+                                resultData.history.push(h);
+                            }
+                        });
+                    }
+
+                    // 4. ดึงข้อมูลการเงิน
+                    if (sections.includes('finance')) {
+                        resultData.finance = [];
+                        const finSnap = await db.collection('finance').doc('summary').collection('logs').get();
+                        finSnap.forEach(doc => {
+                            if (isDocInCohort(doc.data())) resultData.finance.push({ id: doc.id, ...doc.data() });
+                        });
+                    }
+
+                    // 5. ดึงรหัสอ้างอิง TransRef (🌟 สำคัญ: จำกัด 200 รายการ)
+                    if (sections.includes('transRefs')) {
+                        resultData.transRefs = [];
+                        const transRefSnap = await db.collection('transRefs').orderBy('usedAt', 'desc').limit(200).get();
+                        transRefSnap.forEach(doc => {
+                            resultData.transRefs.push({ docId: doc.id, refId: doc.id, ...doc.data() });
+                        });
+                    }
+
+                    return resultData;
+                }
+                
                // 📊 ดึงข้อมูลหลัก (Dashboard)
                 case 'getAllData': {
                     const data = { students: [], bills: [], history: [], finance: [], transRefs: [], amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, announcement: '', systemStatus: 'OFF', allCohorts: [] };
@@ -593,6 +688,31 @@ transRefSnap.forEach(doc => {
                     if(!snap.empty) {
                         await snap.docs[0].ref.delete();
                     }
+                    return await apiCall('getOrderData', currentAdmin);
+                }
+                case 'bulkDeleteOrders': {
+                    const orderIds = args[0];
+                    const batch = db.batch();
+                    for (const orderId of orderIds) {
+                        const snap = await db.collectionGroup('orders').where('orderId', '==', orderId).get();
+                        if(!snap.empty) {
+                            batch.delete(snap.docs[0].ref);
+                        }
+                    }
+                    await batch.commit();
+                    return await apiCall('getOrderData', currentAdmin);
+                }
+                
+                case 'bulkUpdateOrderStatus': {
+                    const [orderIds, newStatus] = args;
+                    const batch = db.batch();
+                    for (const orderId of orderIds) {
+                        const snap = await db.collectionGroup('orders').where('orderId', '==', orderId).get();
+                        if(!snap.empty) {
+                            batch.update(snap.docs[0].ref, { status: newStatus });
+                        }
+                    }
+                    await batch.commit();
                     return await apiCall('getOrderData', currentAdmin);
                 }
 
@@ -5068,18 +5188,35 @@ transRefSnap.forEach(doc => {
 
         const executeBulkStatusUpdate = async () => {
             setAlertState(prev => ({ ...prev, isOpen: false }));
+            
             setTimeout(async () => {
-                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
-                let completed = 0;
-                for (const order of filteredOrders) {
-                    if (order.status !== bulkTargetStatus) {
-                        await new Promise(resolve => { onUpdateStatus(order.orderId, bulkTargetStatus); setTimeout(resolve, 800); });
+                setIsProcessingBulk(true);
+                try {
+                    // กรองเฉพาะออเดอร์ที่สถานะยังไม่ตรงกับเป้าหมาย
+                    const ordersToUpdate = filteredOrders.filter(o => o.status !== bulkTargetStatus);
+                    const orderIds = ordersToUpdate.map(o => o.orderId);
+                    
+                    if (orderIds.length > 0) {
+                        // เรียก API อัปเดตแบบกลุ่มครั้งเดียว
+                        const newData = await apiCall('bulkUpdateOrderStatus', adminContext, orderIds, bulkTargetStatus);
+                        if (setOrderData) setOrderData(newData);
                     }
-                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
+                    
+                    setTimeout(() => { 
+                        setAlertState({ 
+                            isOpen: true, 
+                            type: 'success', 
+                            title: 'เรียบร้อย', 
+                            message: `ดำเนินการเปลี่ยนสถานะ ${orderIds.length} รายการเสร็จสมบูรณ์`, 
+                            onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) 
+                        }); 
+                    }, 500);
+                } catch (error) {
+                    alert("เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: " + error.message);
+                } finally {
+                    setIsProcessingBulk(false);
                 }
-                setIsProcessingBulk(false);
-                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ดำเนินการเปลี่ยนสถานะ ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
-            }, 100);
+            }, 300);
         };
 
         const confirmBulkDelete = () => {
@@ -5088,17 +5225,34 @@ transRefSnap.forEach(doc => {
         };
 
         const executeBulkDelete = async () => {
+             // 1. ปิดหน้าต่างยืนยันก่อน
              setAlertState(prev => ({ ...prev, isOpen: false }));
+             
+             // 2. หน่วงเวลาเล็กน้อยให้หน้าต่างปิดสนิท แล้วจึงเริ่มกระบวนการลบรวดเดียว
              setTimeout(async () => {
-                setIsProcessingBulk(true); setBulkProgress({ current: 0, total: filteredOrders.length });
-                let completed = 0;
-                for (const order of filteredOrders) {
-                    await new Promise(resolve => { onDeleteOrder(order.orderId); setTimeout(resolve, 800); });
-                    completed++; setBulkProgress(prev => ({ ...prev, current: completed }));
+                setIsProcessingBulk(true);
+                try {
+                    const orderIds = filteredOrders.map(o => o.orderId);
+                    
+                    // เรียก API ลบแบบกลุ่มครั้งเดียว
+                    const newData = await apiCall('bulkDeleteOrders', adminContext, orderIds);
+                    if (setOrderData) setOrderData(newData);
+                    
+                    setTimeout(() => { 
+                        setAlertState({ 
+                            isOpen: true, 
+                            type: 'success', 
+                            title: 'เรียบร้อย', 
+                            message: `ลบข้อมูล ${orderIds.length} รายการเสร็จสมบูรณ์`, 
+                            onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) 
+                        }); 
+                    }, 500);
+                } catch (error) {
+                    alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + error.message);
+                } finally {
+                    setIsProcessingBulk(false);
                 }
-                setIsProcessingBulk(false);
-                setTimeout(() => { setAlertState({ isOpen: true, type: 'success', title: 'เรียบร้อย', message: `ลบข้อมูล ${completed} รายการเสร็จสมบูรณ์`, onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false })) }); }, 500);
-             }, 100);
+             }, 300);
         };
 
         const getOrderStatusStyle = (status) => {
@@ -6101,7 +6255,73 @@ transRefSnap.forEach(doc => {
       const [activeTab, setActiveTab] = useState('dashboard');
       const [loading, setLoading] = useState(true);
       const [showSuccess, setShowSuccess] = useState(false);
-      const [data, setData] = useState({ students: [], bills: [], history: [], finance: [], amount: { totalBalance: 0, qrUrl: '', qrCodes: [] }, announcement: '' });
+      // กำหนด state เริ่มต้นให้เป็น null เพื่อใช้เช็คว่าโหลดไปหรือยัง
+    const [data, setData] = useState({
+        students: null, 
+        bills: null, 
+        history: null, 
+        finance: null, 
+        transRefs: null, 
+        amount: { totalBalance: 0, totalUnpaid: 0, unpaidCount: 0, qrCodes: [], qrUrl: '' }, 
+        announcement: '', 
+        systemStatus: 'OFF', 
+        allCohorts: []
+    });
+
+    const [isLoadingData, setIsLoadingData] = useState(false);
+
+    // ตรวจจับเมื่อผู้ใช้เปลี่ยนหน้าจอ (activeTab เปลี่ยน) ให้ดึงข้อมูลที่หน้านั้นต้องใช้
+    useEffect(() => {
+        loadDataForTab(activeTab);
+    }, [activeTab]);
+
+    const loadDataForTab = async (tab) => {
+        const sectionsToFetch = [];
+
+        // หน้าส่วนใหญ่ต้องใช้รายชื่อนักศึกษาเสมอ (เช็คว่าถ้าเป็น null คือยังไม่เคยโหลด)
+        if (data.students === null) sectionsToFetch.push('core');
+
+        // เช็คว่าหน้าที่กำลังเปิด ต้องใช้ข้อมูลส่วนไหนบ้าง และยังไม่ได้โหลดใช่หรือไม่
+        if ((tab === 'bills' || tab === 'dashboard' || tab === 'notifications') && data.bills === null) {
+            sectionsToFetch.push('bills');
+        }
+        if ((tab === 'history' || tab === 'dashboard') && data.history === null) {
+            sectionsToFetch.push('history');
+        }
+        if ((tab === 'finance' || tab === 'dashboard') && data.finance === null) {
+            sectionsToFetch.push('finance');
+        }
+        if (tab === 'transRefs' && data.transRefs === null) {
+            sectionsToFetch.push('transRefs');
+        }
+
+        // หากมีสิ่งที่ต้องโหลดเพิ่ม ให้ส่ง API ไปดึงข้อมูลแค่ส่วนนั้นๆ
+        if (sectionsToFetch.length > 0) {
+            setIsLoadingData(true);
+            try {
+                const studentIds = data.students ? data.students.map(s => s.id) : null;
+                const result = await apiCall('getDataBySection', currentAdmin, sectionsToFetch, studentIds);
+                
+                // อัปเดตข้อมูลที่ดึงมาใหม่ เข้าไปรวมกับ State เดิม (Caching)
+                setData(prev => ({
+                    ...prev,
+                    students: result.students || prev.students,
+                    amount: result.amount || prev.amount,
+                    systemStatus: result.systemStatus || prev.systemStatus,
+                    announcement: result.announcement || prev.announcement,
+                    allCohorts: result.allCohorts || prev.allCohorts,
+                    bills: result.bills || prev.bills,
+                    history: result.history || prev.history,
+                    finance: result.finance || prev.finance,
+                    transRefs: result.transRefs || prev.transRefs,
+                }));
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            } finally {
+                setIsLoadingData(false);
+            }
+        }
+    };
       const [orderData, setOrderData] = useState({ systemStatus: 'OFF', products: [], orders: [] });
       
       const [notificationSubTab, setNotificationSubTab] = useState('followup');
