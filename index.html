@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Admin Medtech System</title>
   <link rel="icon" type="image/png" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
     <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1TxOc2Fvq5EtLA9cEKdkhe7MTA4gx17gs">
@@ -65,7 +65,13 @@
     body { font-family: 'Sarabun', sans-serif; background-color: #F8FAFC; -webkit-tap-highlight-color: transparent; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .card-shadow { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); }
-    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+    button:disabled, input:disabled { cursor: not-allowed; }
+    :focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body>
@@ -74,15 +80,19 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
+    let openOverlayCount = 0;
+    let originalBodyOverflow = '';
     const useScrollLock = (isOpen) => {
       useEffect(() => {
-        if (isOpen) {
-          document.body.style.overflow = 'hidden'; 
-        } else {
-          document.body.style.overflow = 'unset'; 
+        if (!isOpen) return;
+        if (openOverlayCount === 0) {
+          originalBodyOverflow = document.body.style.overflow;
+          document.body.style.overflow = 'hidden';
         }
+        openOverlayCount += 1;
         return () => {
-          document.body.style.overflow = 'unset';
+          openOverlayCount = Math.max(0, openOverlayCount - 1);
+          if (openOverlayCount === 0) document.body.style.overflow = originalBodyOverflow;
         };
       }, [isOpen]);
     };
@@ -109,21 +119,166 @@
     // ⚠️ นำ URL ของ Web App (Google Apps Script โค้ดใหม่) มาใส่ที่นี่ ⚠️
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwbNYCsHz7sxUx4TmjU2qiATY0oLmRC-XCOaPaLoPkiRlBZ2KHH95LDTx36JODNaeEkxw/exec"; 
 
-    // ✅ แทนที่ฟังก์ชัน callGAS เดิมด้วยโค้ดนี้
-    const callGAS = async (action, data) => {
+    // Shared image handling. The server must also validate uploads and authorization.
+    const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
+    const UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
+    const validateImageUrl = (value) => {
+        let parsed;
+        try { parsed = new URL(String(value).trim()); } catch (_) {
+            throw new Error('ลิงก์รูปไม่ถูกต้อง กรุณาใช้ลิงก์ https:// หรือ http://');
+        }
+        if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+            throw new Error('ลิงก์รูปต้องเริ่มด้วย https:// หรือ http://');
+        }
+        return parsed.href;
+    };
+
+    const prepareImageFile = async (file) => {
+        if (!file || file.size === 0) throw new Error('ไฟล์รูปว่างเปล่า กรุณาเลือกไฟล์ใหม่');
+        if (file.size > IMAGE_LIMIT_BYTES) throw new Error('รูปต้องมีขนาดไม่เกิน 10 MB ต่อไฟล์');
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            throw new Error('รองรับรูป JPG, PNG และ WebP เท่านั้น หากเป็น HEIC กรุณาแปลงเป็น JPG ก่อน');
+        }
+        const objectUrl = URL.createObjectURL(file);
         try {
+            const img = await new Promise((resolve, reject) => {
+                const image = new Image();
+                const timer = setTimeout(() => { image.onload = image.onerror = null; image.src = ''; reject(new Error('อ่านรูปนานเกินไป กรุณาเลือกไฟล์ใหม่')); }, 20000);
+                image.onload = () => { clearTimeout(timer); resolve(image); };
+                image.onerror = () => { clearTimeout(timer); reject(new Error('อ่านรูปไม่ได้ ไฟล์อาจเสียหาย กรุณาเลือก JPG หรือ PNG ใหม่')); };
+                image.src = objectUrl;
+            });
+            if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 64000000) {
+                throw new Error('ความละเอียดรูปสูงเกินไป กรุณาย่อรูปแล้วลองใหม่');
+            }
+            const ratio = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.naturalWidth * ratio));
+            canvas.height = Math.max(1, Math.round(img.naturalHeight * ratio));
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('เบราว์เซอร์นี้เตรียมรูปไม่ได้ กรุณาลองเบราว์เซอร์อื่น');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const preview = canvas.toDataURL('image/jpeg', 0.94);
+            const base64 = preview.split(',')[1];
+            if (!base64 || Math.ceil(base64.length * 3 / 4) > UPLOAD_LIMIT_BYTES) {
+                throw new Error('รูปยังมีขนาดใหญ่เกินไปหลังย่อ กรุณาลดขนาดรูปแล้วเลือกใหม่');
+            }
+            return { base64, preview, mimeType: 'image/jpeg' };
+        } finally {
+            URL.revokeObjectURL(objectUrl);
+        }
+    };
+
+    const useImageSelection = () => {
+        const [isPreparingImages, setIsPreparingImages] = useState(false);
+        const imagePreparationRef = useRef(false);
+        const mounted = useRef(true);
+        useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+        const selectImages = async (event, onReady) => {
+            const input = event.target;
+            const files = Array.from(input.files || []);
+            input.value = '';
+            if (!files.length || imagePreparationRef.current) return;
+            imagePreparationRef.current = true;
+            setIsPreparingImages(true);
+            try {
+                if (files.length > 10) throw new Error('กรุณาเลือกรูปครั้งละไม่เกิน 10 ไฟล์');
+                if (files.reduce((total, file) => total + file.size, 0) > 30 * 1024 * 1024) {
+                    throw new Error('รูปที่เลือกมีขนาดรวมเกิน 30 MB กรุณาแบ่งเลือกทีละชุด');
+                }
+                const images = [];
+                for (const file of files) images.push(await prepareImageFile(file));
+                if (mounted.current) onReady(images);
+            } catch (error) {
+                if (mounted.current) window.alert(error.message || 'เตรียมรูปไม่สำเร็จ');
+            } finally {
+                imagePreparationRef.current = false;
+                if (mounted.current) setIsPreparingImages(false);
+            }
+        };
+        return { selectImages, isPreparingImages, imagePreparationRef };
+    };
+
+    const ImageUploadHint = ({ busy }) => (
+        <p role="status" aria-live="polite" className={`rounded-xl px-3 py-2 text-xs leading-relaxed ${busy ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-500'}`}>
+            {busy ? 'กำลังเตรียมรูป กรุณารอสักครู่…' : 'JPG, PNG หรือ WebP • สูงสุด 10 MB ต่อรูป • ระบบย่อรูปให้ก่อนอัปโหลด'}
+        </p>
+    );
+
+    const gasError = (code, message) => Object.assign(new Error(message), { code });
+    const callGAS = async (action, data) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 90000);
+        try {
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                throw gasError('OFFLINE', 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาเชื่อมต่อแล้วลองอีกครั้ง');
+            }
+            let payload = data;
+            if (action === 'uploadImage') {
+                if (!data || typeof data.base64 !== 'string' || !data.base64) {
+                    throw gasError('INVALID_IMAGE', 'ไม่พบข้อมูลรูป กรุณาเลือกรูปใหม่');
+                }
+                // All current pickers prepare JPEG data; keep the existing data: [payload] contract.
+                const base64 = data.base64.replace(/^data:image\/jpeg;base64,/, '');
+                if (!base64.startsWith('/9j/') || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+                    throw gasError('INVALID_IMAGE', 'ข้อมูลรูปไม่ถูกต้อง กรุณาเลือก JPG, PNG หรือ WebP ใหม่');
+                }
+                if (Math.ceil(base64.length * 3 / 4) > UPLOAD_LIMIT_BYTES) {
+                    throw gasError('IMAGE_TOO_LARGE', 'รูปมีขนาดใหญ่เกินไป กรุณาลดขนาดแล้วลองใหม่');
+                }
+                payload = { ...data, base64, mimeType: 'image/jpeg' };
+            }
+            const user = firebase.auth().currentUser;
+            if (!user) throw gasError('AUTH_REQUIRED', 'กรุณาเข้าสู่ระบบก่อนใช้งาน');
+            const idToken = await user.getIdToken();
             const response = await fetch(GAS_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-                // ห่อ data ด้วย [] เพื่อให้ตรงกับตัวรับฝั่ง GAS เดิม
-                body: JSON.stringify({ action: action, data: [data] }) 
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action, data: [payload], idToken }),
+                signal: controller.signal,
+                redirect: 'follow'
             });
-            const result = await response.json();
-            if (result.status === 'success') return result.data;
-            throw new Error(result.message);
+            if (response.status === 401 || response.status === 403) {
+                throw gasError('ENDPOINT_ACCESS_DENIED', 'บริการไม่อนุญาตให้เว็บนี้เรียกใช้งาน\nให้ผู้ดูแลตรวจสิทธิ์เข้าถึง Web App และบัญชีที่ใช้รัน Google Apps Script');
+            }
+            if (!response.ok) {
+                throw gasError('HTTP_ERROR', `บริการตอบกลับผิดพลาด (HTTP ${response.status}) กรุณาแจ้งผู้ดูแลระบบ`);
+            }
+            const body = await response.text();
+            let result;
+            try { result = JSON.parse(body); } catch (_) {
+                const isAccessPage = /accounts\.google\.com|ServiceLogin|authorization|access denied|request access|you need access|permission|ไม่มีสิทธิ์|ต้องได้รับสิทธิ์/i.test(body);
+                throw gasError(isAccessPage ? 'ENDPOINT_ACCESS_DENIED' : 'INVALID_RESPONSE', isAccessPage
+                    ? 'บริการส่งหน้าขอสิทธิ์เข้าถึงกลับมา\nให้ผู้ดูแลตรวจสิทธิ์ Web App และการอนุญาต Google Apps Script'
+                    : 'บริการตอบกลับไม่ใช่ข้อมูลที่เว็บอ่านได้\nให้ผู้ดูแลตรวจ URL /exec และเวอร์ชันที่เผยแพร่ของ Google Apps Script');
+            }
+            if (!result || result.status !== 'success') {
+                const message = String(result?.message || result?.error?.message || result?.error || 'บริการไม่แจ้งรายละเอียดข้อผิดพลาด');
+                if (result?.code) throw gasError(result.code, message.slice(0, 1000));
+                const permissionError = /permission|access denied|not authorized|authorization is required|insufficient|ไม่มีสิทธิ์|สิทธิ์เข้าถึง|ไม่ได้รับอนุญาต/i.test(message);
+                if (action === 'uploadImage' && permissionError) {
+                    throw gasError('UPLOAD_PERMISSION_DENIED', 'บริการอัปโหลดถูกปฏิเสธสิทธิ์\nให้ผู้ดูแลตรวจบัญชีที่รัน Apps Script การอนุญาต Drive และสิทธิ์เขียนโฟลเดอร์ปลายทาง\nรายละเอียด: ' + message.slice(0, 600));
+                }
+                throw gasError('SERVICE_ERROR', message.slice(0, 1000));
+            }
+            if (action === 'uploadImage') {
+                const value = typeof result.data === 'string' ? result.data : result.data?.url;
+                if (!value) throw gasError('MISSING_IMAGE_URL', 'บริการรับรูปแล้วแต่ไม่ส่งลิงก์รูปกลับมา กรุณาแจ้งผู้ดูแลก่อนลองซ้ำ');
+                return validateImageUrl(value);
+            }
+            return result.data;
         } catch (error) {
-            console.error(`GAS Error [${action}]:`, error);
+            if (error.name === 'AbortError') {
+                throw gasError('TIMEOUT', 'ยังไม่ได้รับผลตอบกลับภายใน 90 วินาที\nบริการอาจยังทำงานอยู่ กรุณาตรวจรายการหรือแจ้งผู้ดูแลก่อนกดบันทึกซ้ำ');
+            }
+            if (error instanceof TypeError) {
+                throw gasError('NETWORK_ERROR', 'เชื่อมต่อบริการไม่สำเร็จ\nตรวจอินเทอร์เน็ต หากยังเกิดซ้ำให้ผู้ดูแลตรวจ URL /exec สิทธิ์ Web App และการเชื่อมต่อจากเว็บโฮสติ้ง');
+            }
             throw error;
+        } finally {
+            clearTimeout(timeout);
         }
     };
 
@@ -398,7 +553,7 @@ transRefSnap.forEach(doc => {
                     const payload = args[0]; 
                     let finalValue = payload.text;
                     if (payload.type === 'image' && payload.fileBase64) {
-                        finalValue = await callGAS('uploadImage', { base64: payload.fileBase64, fileName: `ANN-${Date.now()}.jpg` });
+                        finalValue = await callGAS('uploadImage', { cohort: activeCohort, base64: payload.fileBase64, fileName: `ANN-${Date.now()}.jpg` });
                     } else if (payload.type === 'image' && payload.preview) {
                         finalValue = payload.preview;
                     } else if (payload.type === 'image') {
@@ -518,7 +673,7 @@ transRefSnap.forEach(doc => {
                     let finalSlipUrl = form.slipUrl || '';
                     if (form.isSlipDeleted) finalSlipUrl = '';
                     if (form.slipFile) {
-                        finalSlipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-${form.billId}-${Date.now()}.jpg` });
+                        finalSlipUrl = await callGAS('uploadImage', { cohort: activeCohort, base64: form.slipFile, fileName: `SLIP-${form.billId}-${Date.now()}.jpg` });
                     }
                     
                     const snap = await db.collectionGroup('bills').where('billId', '==', form.billId).get();
@@ -568,7 +723,7 @@ transRefSnap.forEach(doc => {
                     let finalSlipUrl = form.slipUrl || '';
                     if (form.isSlipDeleted) finalSlipUrl = '';
                     if (form.slipFile) {
-                        finalSlipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-HIST-${form.billId}-${Date.now()}.jpg` });
+                        finalSlipUrl = await callGAS('uploadImage', { cohort: activeCohort, base64: form.slipFile, fileName: `SLIP-HIST-${form.billId}-${Date.now()}.jpg` });
                     }
                     await db.collection('users').doc(String(form.studentId)).collection('history').doc(String(form.billId)).update({ 
                         item: form.item, total: Number(form.total), payDate: new Date(form.payDate).toISOString(), slipUrl: finalSlipUrl 
@@ -612,8 +767,8 @@ transRefSnap.forEach(doc => {
                     const form = args[0]; 
                     let receiptUrl = form.receiptUrl || ''; 
                     let slipUrl = form.slipUrl || '';
-                    if(form.receiptFile) receiptUrl = await callGAS('uploadImage', { base64: form.receiptFile, fileName: `RECEIPT-${Date.now()}.jpg` });
-                    if(form.slipFile) slipUrl = await callGAS('uploadImage', { base64: form.slipFile, fileName: `SLIP-${Date.now()}.jpg` });
+                    if(form.receiptFile) receiptUrl = await callGAS('uploadImage', { cohort: activeCohort, base64: form.receiptFile, fileName: `RECEIPT-${Date.now()}.jpg` });
+                    if(form.slipFile) slipUrl = await callGAS('uploadImage', { cohort: activeCohort, base64: form.slipFile, fileName: `SLIP-${Date.now()}.jpg` });
                     if(form.isReceiptDeleted) receiptUrl = ''; 
                     if(form.isSlipDeleted) slipUrl = '';
 
@@ -636,13 +791,15 @@ transRefSnap.forEach(doc => {
                     
                     let allMainUrls = [...(form.existingMainImages || [])];
                     if(form.newMainFiles && form.newMainFiles.length > 0) {
-                        const newUrls = await Promise.all(form.newMainFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `PROD-${Date.now()}-${i}.jpg`})));
+                        const newUrls = [];
+                        for (const [i, b64] of form.newMainFiles.entries()) newUrls.push(await callGAS('uploadImage', { cohort: activeCohort,base64: b64, fileName: `PROD-${Date.now()}-${i}.jpg`}));
                         allMainUrls.push(...newUrls);
                     }
                     
                     let allSizeUrls = [...(form.existingSizeImages || [])];
                     if(form.newSizeFiles && form.newSizeFiles.length > 0) {
-                        const newUrls = await Promise.all(form.newSizeFiles.map((b64,i) => callGAS('uploadImage', {base64: b64, fileName: `SIZE-${Date.now()}-${i}.jpg`})));
+                        const newUrls = [];
+                        for (const [i, b64] of form.newSizeFiles.entries()) newUrls.push(await callGAS('uploadImage', { cohort: activeCohort,base64: b64, fileName: `SIZE-${Date.now()}-${i}.jpg`}));
                         allSizeUrls.push(...newUrls);
                     }
 
@@ -650,7 +807,7 @@ transRefSnap.forEach(doc => {
                     // ✅ บันทึก cohort เข้าไปด้วย
                     const prodData = { 
                         id: prodId, name: form.name, price: form.price, options: form.options, status: form.status, stock: form.stock,
-                        cohort: activeCohort
+                        cohort: currentAdmin?.role === 'superadmin' ? (form.cohort || activeCohort) : activeCohort
                     };
                     
                     allMainUrls.forEach((url, i) => {
@@ -769,21 +926,24 @@ transRefSnap.forEach(doc => {
 
                 // 💳 จัดการ QR Code
                 case 'uploadQrImage': {
-                    const [b64, mime, fName, amt, oldUrl, directUrl] = args; 
+                    const [b64, mime, fName, amt, oldUrl, directUrl, targetCohort] = args;
+                    if (!currentAdmin) throw new Error("กรุณาเข้าสู่ระบบใหม่ก่อนบันทึก"); 
                     
                     // ✅ ถ้ารับ directUrl มา ให้ใช้ลิงก์นั้นเลย ถ้าไม่มีค่อยเรียก GAS อัปโหลด Base64
                     let newUrl = directUrl;
                     if (b64) {
-                        newUrl = await callGAS('uploadImage', { base64: b64, fileName: fName });
+                        newUrl = await callGAS('uploadImage', { cohort: activeCohort, base64: b64, fileName: fName });
                     }
                     
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
+                    const qrCohort = currentAdmin.role === 'superadmin' ? (targetCohort || activeCohort) : activeCohort;
+                    const qrDocName = qrCohort === 'ALL' ? 'qrMap' : `qrMap_${qrCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
                     
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
                     if (oldUrl) { 
                         const idx = codes.findIndex(c => c.url === oldUrl); 
-                        if(idx >= 0) codes[idx] = { url: newUrl, amount: amt }; 
+                        if (idx < 0) throw new Error('ไม่พบ QR เดิมในชั้นปีนี้ กรุณาโหลดข้อมูลใหม่');
+                        codes[idx] = { url: newUrl, amount: amt }; 
                     } else {
                         codes.push({ url: newUrl, amount: amt });
                     }
@@ -791,13 +951,16 @@ transRefSnap.forEach(doc => {
                     return (await apiCall('getAllData', currentAdmin)).amount;
                 }
                 case 'updateQrCode': {
-                    const [oldUrl, newUrl, newAmount] = args; 
+                    const [oldUrl, newUrl, newAmount, targetCohort] = args;
+                    if (!currentAdmin) throw new Error("กรุณาเข้าสู่ระบบใหม่ก่อนบันทึก"); 
                     
-                    const qrDocName = activeCohort === 'ALL' ? 'qrMap' : `qrMap_${activeCohort}`;
+                    const qrCohort = currentAdmin.role === 'superadmin' ? (targetCohort || activeCohort) : activeCohort;
+                    const qrDocName = qrCohort === 'ALL' ? 'qrMap' : `qrMap_${qrCohort}`;
                     const snap = await db.collection('config').doc(qrDocName).get(); 
                     
                     let codes = snap.exists && snap.data().codes ? snap.data().codes : [];
-                    const idx = codes.findIndex(c => c.url === oldUrl); 
+                    const idx = codes.findIndex(c => c.url === oldUrl);
+                    if (idx < 0) throw new Error('ไม่พบ QR เดิมในชั้นปีนี้ กรุณาโหลดข้อมูลใหม่');
                     if(idx >= 0) { 
                         codes[idx].amount = newAmount; 
                         if(newUrl) codes[idx].url = newUrl; 
@@ -924,16 +1087,74 @@ transRefSnap.forEach(doc => {
       }
     };
 
-    // ✅ ฟังก์ชันแปลงลิงก์ Google Drive ให้แสดงรูปได้โดยไม่ติด CORS
-    const getDirectImageUrl = (url) => {
-        if (!url) return '';
-        if (!url.includes('drive.google.com')) return url;
-        let id = '';
-        if (url.includes('id=')) id = url.split('id=')[1].split('&')[0];
-        else if (url.includes('/file/d/')) id = url.split('/file/d/')[1].split('/')[0];
-        return id ? `https://lh3.googleusercontent.com/d/${id}` : url;
+    // URL conversion changes the image address; it does not grant Drive permissions.
+    const getDirectImageUrl = (value) => {
+        if (!value) return '';
+        const text = String(value);
+        try {
+            const parsed = new URL(text);
+            if (parsed.hostname !== 'drive.google.com') return text;
+            const id = parsed.searchParams.get('id') || (parsed.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || [])[1];
+            return id && /^[a-zA-Z0-9_-]+$/.test(id) ? `https://lh3.googleusercontent.com/d/${id}` : text;
+        } catch (_) { return text; }
     };
 
+    const driveFileId = (value) => {
+        try {
+            const url = new URL(value);
+            if (url.hostname === 'drive.google.com') {
+                return url.searchParams.get('id') || (url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || [])[1] || null;
+            }
+            if (url.hostname === 'lh3.googleusercontent.com') return (url.pathname.match(/^\/d\/([a-zA-Z0-9_-]+)/) || [])[1] || null;
+        } catch (_) {}
+        return null;
+    };
+    // Try the normal public image first; restricted files are read only after admin authentication.
+    const AppImage = ({ src, alt = 'รูปภาพ', onError, className = '', ...props }) => {
+        const [resolved, setResolved] = useState(null);
+        const [failure, setFailure] = useState('');
+        const [pending, setPending] = useState(false);
+        const attempt = useRef(false);
+        const generation = useRef(0);
+        const blobUrl = useRef(null);
+        useEffect(() => {
+            generation.current += 1; attempt.current = false;
+            setResolved(null); setFailure(''); setPending(false);
+            return () => {
+                generation.current += 1;
+                if (blobUrl.current) { URL.revokeObjectURL(blobUrl.current); blobUrl.current = null; }
+            };
+        }, [src]);
+        const recover = async () => {
+            if (attempt.current) return;
+            attempt.current = true;
+            const fileId = driveFileId(src);
+            if (!fileId) { setFailure('โหลดรูปไม่ได้ กรุณาตรวจลิงก์รูป'); return; }
+            const current = generation.current;
+            setPending(true);
+            try {
+                const result = await callGAS('getDriveImage', { fileId });
+                if (generation.current !== current) return;
+                if (!result || !['image/jpeg', 'image/png', 'image/webp'].includes(result.mimeType) || typeof result.base64 !== 'string' || result.base64.length > 7000000) {
+                    throw new Error('บริการส่งข้อมูลรูปกลับมาไม่ถูกต้อง');
+                }
+                const bytes = Uint8Array.from(atob(result.base64), character => character.charCodeAt(0));
+                blobUrl.current = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
+                setResolved({ src, url: blobUrl.current });
+            } catch (error) {
+                if (generation.current === current) setFailure(error.message || 'อ่านรูปไม่ได้');
+            } finally {
+                if (generation.current === current) setPending(false);
+            }
+        };
+        if (failure) return <span role="img" aria-label={`${alt}: ${failure}`} title={failure} className={`${className} flex flex-col items-center justify-center gap-2 bg-slate-100 p-3 text-center text-xs text-slate-600`}>
+            <span>เปิดรูปไม่ได้</span>
+            <span className="text-[11px] leading-relaxed break-words">{failure}</span>
+            {driveFileId(src) && <a href={`https://drive.google.com/file/d/${driveFileId(src)}/view`} target="_blank" rel="noopener noreferrer" className="underline text-blue-600" onClick={event => event.stopPropagation()}>เปิดใน Google Drive</a>}
+        </span>;
+        if (pending) return <span role="status" className={`${className} flex items-center justify-center bg-slate-50 text-xs text-slate-500`}>กำลังโหลดรูป…</span>;
+        return <img {...props} src={resolved?.src === src ? resolved.url : getDirectImageUrl(src)} alt={alt} className={className} onError={resolved?.src === src ? () => setFailure('ข้อมูลรูปเสียหาย กรุณาอัปโหลดใหม่') : recover} />;
+    };
 
     // 🌟 ฟังก์ชันคำนวณค่าปรับ (อัปเดต: ให้แสดงค่าปรับแม้จะชำระแล้ว หรือ รอตรวจสอบ)
     const calculateFine = (bill) => {
@@ -1193,7 +1414,7 @@ transRefSnap.forEach(doc => {
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
           <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
              <button onClick={onClose} className="absolute -top-12 right-0 md:-right-12 text-white hover:text-gray-300 transition p-2 bg-black/20 rounded-full backdrop-blur-md"><Icon name="x" size={24} weight="bold"/></button>
-             <img src={imageUrl} alt="Slip" className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain bg-white" />
+             <AppImage src={imageUrl} alt="Slip" className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain bg-white" />
           </div>
         </div>,
         document.body
@@ -1213,13 +1434,14 @@ transRefSnap.forEach(doc => {
           
           {/* ปรับเป็น h-full (เต็มจอแนวตั้ง) และใส่ animate-slide-in-right */}
           <div 
+            role="dialog" aria-modal="true" aria-label={title || "รายละเอียด"}
             className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-slide-in-right relative" 
             onClick={e => e.stopPropagation()} // ป้องกันการคลิกโดนเนื้อหาแล้วปิด
           >
             {!hideClose && (
               <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-white flex-shrink-0 pt-safe">
                 <h3 className="font-bold text-lg text-gray-800">{title}</h3>
-                <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-red-500 transition-colors">
+                <button aria-label="ปิดหน้าต่าง" onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-red-500 transition-colors">
                     <Icon name="x" size={20} weight="bold" />
                 </button>
               </div>
@@ -1243,12 +1465,12 @@ transRefSnap.forEach(doc => {
       if (!isOpen) return null;
       return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-           <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-shake text-center border-t-4 border-red-500">
+           <div role="alertdialog" aria-modal="true" aria-label="เกิดข้อผิดพลาด" className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl text-center border-t-4 border-red-500">
              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
                <Icon name="warning-circle" size={32} weight="fill" className="text-red-500" />
              </div>
              <h3 className="text-xl font-bold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3>
-             <p className="text-sm text-gray-500 mb-6 leading-relaxed font-medium text-red-600">{message}</p>
+             <p className="text-sm mb-6 leading-relaxed font-medium text-red-600 whitespace-pre-line break-words">{message}</p>
              <button onClick={onClose} className="w-full py-3 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition">ตกลง</button>
            </div>
         </div>,
@@ -1533,6 +1755,7 @@ transRefSnap.forEach(doc => {
 
   // --- Bill Form (อัปเดต: เพิ่มปุ่มลบวันที่ชำระ + รองรับรูปลิงก์ไดร์ฟ) ---
     const BillForm = ({ students, onSubmit, loading, initialData, buttonText = "บันทึกข้อมูล" }) => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
         const isEditMode = !!initialData;
         
         const [formData, setFormData] = useState({
@@ -1572,18 +1795,10 @@ transRefSnap.forEach(doc => {
             setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
         };
 
-        const handleFileChange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64 = reader.result.split(',')[1];
-                    setFormData(prev => ({ ...prev, slipFile: base64, isSlipDeleted: false })); 
-                    setPreviewImage(reader.result); 
-                };
-                reader.readAsDataURL(file);
-            }
-        };
+        const handleFileChange = (e) => selectImages(e, ([image]) => {
+            setFormData(prev => ({ ...prev, slipFile: image.base64, isSlipDeleted: false }));
+            setPreviewImage(image.preview);
+        });
 
         const handleDeleteSlip = () => {
             setFormData(prev => ({ ...prev, slipUrl: '', slipFile: null, isSlipDeleted: true }));
@@ -1614,7 +1829,8 @@ transRefSnap.forEach(doc => {
         const clearSelection = () => setSelectedStudentIds([]);
 
         const handleSubmit = (e) => { 
-            e.preventDefault(); 
+            e.preventDefault();
+            if (imagePreparationRef.current || loading) return; 
             if (isEditMode) {
                 onSubmit(formData);
             } else {
@@ -1625,6 +1841,7 @@ transRefSnap.forEach(doc => {
 
         return (
             <form onSubmit={handleSubmit} className="space-y-5 animate-fade-in">
+                <ImageUploadHint busy={isPreparingImages} />
                 {/* Section 1: เลือกนักศึกษา */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 relative group transition-all">
                     <label className="text-xs font-bold text-gray-500 mb-2 block flex items-center gap-1"><Icon name="user" weight="bold"/> นักศึกษา</label>
@@ -1737,10 +1954,10 @@ transRefSnap.forEach(doc => {
                     {previewImage ? (
                         <div className="relative group">
                             <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                                <img src={getDirectImageUrl(previewImage)} alt="Slip Preview" className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
+                                <AppImage src={getDirectImageUrl(previewImage)} alt="Slip Preview" className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                             </div>
                             <div className="absolute top-2 right-2 flex gap-2">
-                                <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={handleFileChange} className="hidden" /></label>
+                                <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" /></label>
                                 <button type="button" onClick={handleSlipUrl} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-indigo-600 shadow-md hover:bg-indigo-50 transition" title="เปลี่ยนเป็นลิงก์"><Icon name="link" weight="bold" size={16}/></button>
                                 <button type="button" onClick={handleDeleteSlip} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50 transition"><Icon name="trash" weight="bold" size={16}/></button>
                             </div>
@@ -1750,7 +1967,7 @@ transRefSnap.forEach(doc => {
                             <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                                 <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
                                 <p className="text-[10px] text-gray-500 font-medium">อัปโหลดไฟล์</p>
-                                <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                                <input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" />
                             </label>
                             <button type="button" onClick={handleSlipUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                                 <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
@@ -1778,7 +1995,7 @@ transRefSnap.forEach(doc => {
                     </div>
                 )}
 
-                <button type="submit" disabled={loading || (!isEditMode && selectedStudentIds.length === 0) || (isEditMode && !formData.studentId)} className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="submit" disabled={isPreparingImages || loading || (!isEditMode && selectedStudentIds.length === 0) || (isEditMode && !formData.studentId)} className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     {loading ? <><Icon name="circle-notch" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : <><Icon name="floppy-disk" weight="bold"/> {isEditMode ? buttonText : `สร้างบิล (${selectedStudentIds.length} คน)`}</>}
                 </button>
             </form>
@@ -2076,7 +2293,7 @@ transRefSnap.forEach(doc => {
           return (
              <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fade-in p-4" onClick={() => setPreviewImage(null)}>
                  <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
-                     <img src={getDirectImageUrl(previewImage)} className="max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl bg-white" />
+                     <AppImage src={getDirectImageUrl(previewImage)} className="max-h-[85vh] max-w-full object-contain rounded-lg shadow-2xl bg-white" />
                      <button onClick={() => setPreviewImage(null)} className="absolute -top-12 right-0 text-white hover:text-gray-300 transition">
                          <Icon name="x-circle" weight="fill" size={32}/>
                      </button>
@@ -2207,12 +2424,16 @@ transRefSnap.forEach(doc => {
 
     // --- QR Code Management Modal (อัปเดตให้รองรับลิงก์ Drive) ---
     const QrCodeModal = ({ isOpen, onClose, qrUrls, onUploadSuccess, onDelete, loading, initialEditQr, adminContext }) => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
         const [mode, setMode] = useState('list'); 
         const [uploadFile, setUploadFile] = useState(null);
         const [previewUrl, setPreviewUrl] = useState('');
         const [newAmount, setNewAmount] = useState('');
         const [isUploading, setIsUploading] = useState(false);
-        const [editTargetUrl, setEditTargetUrl] = useState(null); 
+        const [editTargetUrl, setEditTargetUrl] = useState(null);
+        const [editCohort, setEditCohort] = useState(null);
+        const [uploadError, setUploadError] = useState('');
+        const saveInFlight = useRef(false); 
 
         useEffect(() => {
             if (isOpen) {
@@ -2220,8 +2441,10 @@ transRefSnap.forEach(doc => {
             }
         }, [isOpen, initialEditQr]);
 
-        const resetForm = () => { setUploadFile(null); setPreviewUrl(''); setNewAmount(''); setEditTargetUrl(null); setIsUploading(false); };
-        const handleFileChange = (e) => { const file = e.target.files[0]; if (file) { setUploadFile(file); const reader = new FileReader(); reader.onloadend = () => setPreviewUrl(reader.result); reader.readAsDataURL(file); } };
+        const resetForm = () => { setUploadFile(null); setPreviewUrl(''); setNewAmount(''); setEditTargetUrl(null); setEditCohort(null); setUploadError(''); setIsUploading(false); };
+        const handleFileChange = (e) => selectImages(e, ([image]) => {
+            setUploadFile(image); setPreviewUrl(image.preview); setUploadError('');
+        });
         
         // ✅ เพิ่มฟังก์ชันรับลิงก์สำหรับ QR
         const handleAddUrl = () => {
@@ -2232,59 +2455,44 @@ transRefSnap.forEach(doc => {
             }
         };
 
-        const startEdit = (qr) => { setMode('edit'); setEditTargetUrl(qr.url); setNewAmount(qr.amount); setPreviewUrl(qr.url); setUploadFile(null); };
+        const startEdit = (qr) => { setMode('edit'); setEditTargetUrl(qr.url); setEditCohort(qr.cohort || 'ALL'); setNewAmount(qr.amount); setPreviewUrl(qr.url); setUploadFile(null); setUploadError(''); };
         const goToAdd = () => { resetForm(); setMode('add'); };
         const goBack = () => { resetForm(); setMode('list'); };
 
-        const handleSave = () => {
-            if (!newAmount) return;
-            setIsUploading(true);
-            const onSuccess = (newData) => { setIsUploading(false); resetForm(); if(!initialEditQr) setMode('list'); else onClose(); onUploadSuccess(newData); };
-            const onFailure = (err) => { setIsUploading(false); alert("เกิดข้อผิดพลาด: " + err.message); };
-
-            if (uploadFile) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.createElement("img");
-                    img.onload = () => {
-                        const canvas = document.createElement("canvas");
-                        const ctx = canvas.getContext("2d");
-                        const MAX_WIDTH = 800; const MAX_HEIGHT = 800;
-                        let width = img.width; let height = img.height;
-                        if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
-                        else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
-                        canvas.width = width; canvas.height = height;
-                        ctx.drawImage(img, 0, 0, width, height);
-                        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7).split(',')[1];
-                        
-                        if (mode === 'edit') {
-                            apiCall('uploadQrImage', adminContext, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount, editTargetUrl).then(onSuccess).catch(onFailure); 
-                        } else {
-                            apiCall('uploadQrImage', adminContext, compressedBase64, "image/jpeg", `QR-${Date.now()}.jpg`, newAmount).then(onSuccess).catch(onFailure); 
-                        }
-                    };
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(uploadFile);
-            } 
-            else if (previewUrl) {
-                // ✅ กรณีไม่มีไฟล์อัปโหลด (วางลิงก์)
-                if (mode === 'add' || !editTargetUrl) {
-                    apiCall('uploadQrImage', adminContext, null, null, null, newAmount, null, previewUrl).then(onSuccess).catch(onFailure);
+        const handleSave = async () => {
+            if (saveInFlight.current || imagePreparationRef.current || loading) return;
+            const amount = Number(newAmount);
+            if (String(newAmount).trim() === '' || !Number.isFinite(amount) || amount < 0) {
+                setUploadError('กรุณาระบุยอดเงินตั้งแต่ 0 บาทขึ้นไป'); return;
+            }
+            if (!adminContext) { setUploadError('กรุณาเข้าสู่ระบบใหม่ก่อนบันทึก'); return; }
+            if (!uploadFile && !previewUrl) { setUploadError('กรุณาเลือกรูปหรือวางลิงก์'); return; }
+            saveInFlight.current = true;
+            setIsUploading(true); setUploadError('');
+            try {
+                let result;
+                if (uploadFile) {
+                    result = await apiCall('uploadQrImage', adminContext, uploadFile.base64, 'image/jpeg', `QR-${Date.now()}.jpg`, amount, editTargetUrl, null, editCohort);
                 } else {
-                    const finalUrl = previewUrl !== editTargetUrl ? previewUrl : editTargetUrl;
-                    apiCall('updateQrCode', adminContext, editTargetUrl, finalUrl, newAmount).then(onSuccess).catch(onFailure); 
+                    const imageUrl = validateImageUrl(previewUrl);
+                    result = mode === 'edit' && editTargetUrl
+                        ? await apiCall('updateQrCode', adminContext, editTargetUrl, imageUrl, amount, editCohort)
+                        : await apiCall('uploadQrImage', adminContext, null, null, null, amount, null, imageUrl);
                 }
-            } else {
-                setIsUploading(false);
-                alert("กรุณาอัปโหลดรูปหรือวางลิงก์");
+                resetForm();
+                if (!initialEditQr) setMode('list'); else onClose();
+                onUploadSuccess(result);
+            } catch (error) {
+                setUploadError(error.message || 'บันทึกรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+            } finally {
+                saveInFlight.current = false; setIsUploading(false);
             }
         };
 
         if (!isOpen) return null;
 
         return (
-            <Modal isOpen={isOpen} onClose={onClose} title={mode === 'list' ? "จัดการ QR Code" : (mode === 'add' ? "เพิ่ม QR Code" : "แก้ไข QR Code")}>
+            <Modal isOpen={isOpen} onClose={() => { if (!saveInFlight.current && !imagePreparationRef.current) onClose(); }} title={mode === 'list' ? "จัดการ QR Code" : (mode === 'add' ? "เพิ่ม QR Code" : "แก้ไข QR Code")}>
                 {mode === 'list' && (
                     <div className="space-y-4 animate-fade-in">
                         <button onClick={goToAdd} className="w-full py-3 bg-blue-50 text-primary border border-blue-200 rounded-xl flex items-center justify-center gap-2 font-bold hover:bg-blue-100 transition"><Icon name="plus-circle" size={20} weight="bold"/> เพิ่ม QR Code ใหม่</button>
@@ -2294,11 +2502,11 @@ transRefSnap.forEach(doc => {
                                 <div key={idx} className="relative group rounded-xl border border-gray-200 overflow-hidden bg-white flex flex-col shadow-sm">
                                     <div className="aspect-square flex items-center justify-center p-4 bg-gray-50">
                                         {/* ✅ จุดที่ 1: แสดงรูปในรายการหลัก */}
-                                        <img src={getDirectImageUrl(qr.url)} alt="QR" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                                        <AppImage src={getDirectImageUrl(qr.url)} alt="QR" className="max-h-full max-w-full object-contain mix-blend-multiply" />
                                     </div>
                                     <div className="bg-white p-3 text-center border-t border-gray-100"><span className="text-sm font-bold text-gray-700">฿{Number(qr.amount).toLocaleString()}</span></div>
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
-                                        <button onClick={() => startEdit(qr)} className="bg-white text-blue-600 p-2.5 rounded-full hover:bg-blue-50 transition shadow-lg"><Icon name="pencil-simple" weight="bold" size={20} /></button>
+                                    <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
+                                        <button aria-label="แก้ไข QR Code" onClick={() => startEdit(qr)} className="bg-white text-blue-600 p-2.5 rounded-full hover:bg-blue-50 transition shadow-lg"><Icon name="pencil-simple" weight="bold" size={20} /></button>
                                         <button onClick={() => { if(confirm('ต้องการลบใช่หรือไม่?')) onDelete(qr.url); }} className="bg-white text-red-500 p-2.5 rounded-full hover:bg-red-50 transition shadow-lg"><Icon name="trash" weight="bold" size={20} /></button>
                                     </div>
                                 </div>
@@ -2307,15 +2515,17 @@ transRefSnap.forEach(doc => {
                     </div>
                 )}
                 {(mode === 'add' || mode === 'edit') && (
-                    <div className="space-y-6 animate-scale-in">
+                    <fieldset disabled={isUploading || isPreparingImages} className="space-y-6 animate-scale-in min-w-0">
+                        <ImageUploadHint busy={isPreparingImages} />
+                        {uploadError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line leading-relaxed">{uploadError}</div>}
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-gray-700">รูปภาพ QR Code</label>
                             {previewUrl ? (
                                 <div className="border-2 border-gray-100 rounded-xl p-4 text-center relative group bg-white shadow-sm">
                                     <div className="relative">
-                                        <img src={getDirectImageUrl(previewUrl)} className="h-40 object-contain mx-auto rounded-lg" alt="QR Preview" />
+                                        <AppImage src={getDirectImageUrl(previewUrl)} className="h-40 object-contain mx-auto rounded-lg" alt="QR Preview" />
                                         <div className="absolute top-0 right-0 flex gap-2 z-20">
-                                            <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={handleFileChange} className="hidden" /></label>
+                                            <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" /></label>
                                             <button type="button" onClick={handleAddUrl} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-indigo-600 shadow-md hover:bg-indigo-50 transition" title="เปลี่ยนลิงก์"><Icon name="link" weight="bold" size={16}/></button>
                                         </div>
                                     </div>
@@ -2323,7 +2533,7 @@ transRefSnap.forEach(doc => {
                             ) : (
                                 <div className="flex gap-2 h-32 w-full">
                                     <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group relative">
-                                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                                         <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform"><Icon name="upload-simple" size={24} weight="bold"/></div>
                                         <p className="text-xs text-gray-500 font-medium">อัปโหลดไฟล์</p>
                                     </label>
@@ -2338,16 +2548,16 @@ transRefSnap.forEach(doc => {
                             <label className="text-sm font-bold text-gray-700">ระบุยอดเงิน (บาท)</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">฿</span>
-                                <input type="number" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="w-full pl-8 p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-bold text-lg outline-none focus:ring-2 focus:ring-primary focus:bg-white transition" placeholder="0" />
+                                <input type="number" min="0" step="0.01" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} className="w-full pl-8 p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-bold text-lg outline-none focus:ring-2 focus:ring-primary focus:bg-white transition" placeholder="0" />
                             </div>
                         </div>
                         <div className="flex gap-3 pt-2">
                             <button onClick={initialEditQr ? onClose : goBack} disabled={isUploading} className="flex-1 py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition">ยกเลิก</button>
-                            <button onClick={handleSave} disabled={loading || isUploading || (!uploadFile && !previewUrl && mode === 'add') || !newAmount} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
+                            <button onClick={handleSave} disabled={isPreparingImages || loading || isUploading || (!uploadFile && !previewUrl && mode === 'add') || String(newAmount).trim() === ''} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
     {isUploading ? <><Icon name="spinner" className="animate-spin"/> กำลังบันทึก...</> : "บันทึกข้อมูล"}
 </button>
                         </div>
-                    </div>
+                    </fieldset>
                 )}
             </Modal>
         );
@@ -2632,6 +2842,7 @@ transRefSnap.forEach(doc => {
 
     // --- History Edit Modal (หน้าต่างแก้ไขประวัติแยกต่างหาก) ---
     const HistoryEditModal = ({ isOpen, onClose, historyItem, onSave, loading }) => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
         const [form, setForm] = useState({ studentId: '', billId: '', item: '', total: '', payDate: '', slipUrl: '', isSlipDeleted: false, slipFile: null });
         const [previewImage, setPreviewImage] = useState(null);
 
@@ -2652,24 +2863,17 @@ transRefSnap.forEach(doc => {
 
         const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
         
-        const handleFileChange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64 = reader.result.split(',')[1];
-                    setForm(prev => ({ ...prev, slipFile: base64, isSlipDeleted: false })); 
-                    setPreviewImage(reader.result); 
-                };
-                reader.readAsDataURL(file);
-            }
-        };
+        const handleFileChange = (e) => selectImages(e, ([image]) => {
+            setForm(prev => ({ ...prev, slipFile: image.base64, isSlipDeleted: false }));
+            setPreviewImage(image.preview);
+        });
 
         if (!isOpen) return null;
 
         return (
             <Modal isOpen={isOpen} onClose={onClose} title="แก้ไขประวัติชำระเงิน" zIndex="z-[120]">
                 <div className="space-y-4 pt-2 animate-fade-in">
+                    <ImageUploadHint busy={isPreparingImages} />
                     <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex justify-between items-center">
                         <span className="text-xs text-blue-600 font-bold">รหัส: {form.studentId}</span>
                         <span className="text-xs text-blue-600 font-mono font-bold">#{form.billId}</span>
@@ -2694,22 +2898,22 @@ transRefSnap.forEach(doc => {
                         {previewImage ? (
                             <div className="relative group">
                                 <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                                    <img src={getDirectImageUrl(previewImage)} className="w-full h-full object-contain bg-white" />
+                                    <AppImage src={getDirectImageUrl(previewImage)} className="w-full h-full object-contain bg-white" />
                                 </div>
                                 <div className="absolute top-2 right-2 flex gap-2">
-                                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={handleFileChange} className="hidden" /></label>
+                                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" /></label>
                                     <button type="button" onClick={() => { setForm(p => ({...p, slipUrl: '', slipFile: null, isSlipDeleted: true})); setPreviewImage(null); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50 transition"><Icon name="trash" weight="bold" size={16}/></button>
                                 </div>
                             </div>
                         ) : (
                             <label className="flex flex-col items-center justify-center h-24 w-full border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                                 <div className="flex flex-col items-center justify-center pt-5 pb-6"><Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/><p className="text-[10px] text-gray-500 font-medium">เพิ่มสลิปใหม่</p></div>
-                                <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                                <input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} className="hidden" />
                             </label>
                         )}
                     </div>
 
-                    <button onClick={() => onSave(form)} disabled={loading || !form.item} className="w-full py-4 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold hover:shadow-lg shadow-blue-200 disabled:opacity-50 transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <button onClick={() => onSave(form)} disabled={isPreparingImages || loading || !form.item} className="w-full py-4 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold hover:shadow-lg shadow-blue-200 disabled:opacity-50 transition transform active:scale-95 flex items-center justify-center gap-2">
                         {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : <><Icon name="floppy-disk" weight="bold" size={20}/> บันทึกการแก้ไข</>}
                     </button>
                 </div>
@@ -3797,7 +4001,7 @@ transRefSnap.forEach(doc => {
 
         return (
             <div className="relative w-full h-full group bg-gray-100">
-                <img 
+                <AppImage 
                     src={images[currentIndex]} 
                     className="w-full h-full object-cover" 
                     alt={`รูปที่ ${currentIndex + 1}`}
@@ -3818,7 +4022,7 @@ transRefSnap.forEach(doc => {
     };
 
     // --- 1. Helper Component: Image Manager (อัปเดตรองรับการใส่ลิ้งก์) ---
-    const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew, onAddUrl }) => {
+    const ImageManager = ({ label, existingUrls = [], newImages = [], onRemoveExisting, onRemoveNew, onAddNew, onAddUrl, disabled = false }) => {
         const inputId = `file-input-${Math.random().toString(36).substr(2, 9)}`;
 
         return (
@@ -3834,7 +4038,7 @@ transRefSnap.forEach(doc => {
                     {/* 1. รูปเดิม หรือ รูปที่เป็นลิงก์ (Existing / URL) */}
                     {existingUrls.map((url, idx) => (
                         <div key={`exist-${idx}`} className="relative aspect-square rounded-2xl overflow-hidden group shadow-sm hover:shadow-md transition-all bg-gray-100">
-                            <img 
+                            <AppImage 
                                 src={getDirectImageUrl(url.trim())} 
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 bg-white" 
                                 alt="old" 
@@ -3852,7 +4056,7 @@ transRefSnap.forEach(doc => {
                     {/* 2. รูปใหม่แบบไฟล์ (New Base64) */}
                     {newImages.map((img, idx) => (
                         <div key={`new-${idx}`} className="relative aspect-square rounded-2xl border-2 border-indigo-400 overflow-hidden group shadow-md">
-                            <img src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover" alt="new" />
+                            <AppImage src={`data:image/jpeg;base64,${img}`} className="w-full h-full object-cover" alt="new" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
                                 <button type="button" onClick={() => onRemoveNew(idx)} className="w-8 h-8 bg-white text-red-500 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition">
                                     <Icon name="trash" weight="bold" size={16}/>
@@ -3868,7 +4072,7 @@ transRefSnap.forEach(doc => {
                             <Icon name="upload-simple" weight="bold" className="text-gray-400 group-hover:text-primary"/>
                         </div>
                         <span className="text-[9px] font-bold text-gray-400 group-hover:text-primary">อัปโหลด</span>
-                        <input id={inputId} type="file" multiple accept="image/*" className="hidden" onChange={onAddNew} />
+                        <input id={inputId} type="file" disabled={disabled} multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onAddNew} />
                     </label>
 
                     {/* 4. ✅ ปุ่มเพิ่มจากลิงก์ (+) */}
@@ -3887,6 +4091,7 @@ transRefSnap.forEach(doc => {
               
     // --- Product Modal (อัปเดต: เปลี่ยนเป็นแบบ Slide-in Drawer จากด้านขวา) ---
     const ProductModal = ({ isOpen, onClose, product, onSave, loading, adminContext, availableCohorts, zIndex = "z-[110]" }) => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
         const [form, setForm] = useState({ id: '', name: '', price: '', options: '', status: 'ON', stock: '', cohort: '' });
         const [existingMainImages, setExistingMainImages] = useState([]); 
         const [newMainFiles, setNewMainFiles] = useState([]); 
@@ -3940,35 +4145,10 @@ transRefSnap.forEach(doc => {
         const handleRemoveOption = (gIdx, oIdx) => { const newGroups = [...optionGroups]; newGroups[gIdx].options = newGroups[gIdx].options.filter((_, i) => i !== oIdx); setOptionGroups(newGroups); };
         const handleOptionChange = (gIdx, oIdx, field, val) => { const newGroups = [...optionGroups]; newGroups[gIdx].options[oIdx][field] = val; setOptionGroups(newGroups); };
 
-        const processFiles = (files, callback) => {
-            const promises = Array.from(files).map(file => {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const img = document.createElement("img");
-                        img.onload = () => {
-                            const canvas = document.createElement("canvas");
-                            const ctx = canvas.getContext("2d");
-                            const MAX_WIDTH = 1000; const MAX_HEIGHT = 1000;
-                            let width = img.width; let height = img.height;
-                            if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
-                            else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
-                            canvas.width = width; canvas.height = height;
-                            ctx.drawImage(img, 0, 0, width, height);
-                            resolve(canvas.toDataURL("image/jpeg", 0.8).split(',')[1]); 
-                        };
-                        img.src = e.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                });
-            });
-            Promise.all(promises).then(callback);
-        };
-
-        const handleAddMain = (e) => processFiles(e.target.files, (b64s) => setNewMainFiles(prev => [...prev, ...b64s]));
+        const handleAddMain = (e) => selectImages(e, images => setNewMainFiles(prev => [...prev, ...images.map(image => image.base64)]));
         const handleDelMainExist = (idx) => setExistingMainImages(prev => prev.filter((_, i) => i !== idx));
         const handleDelMainNew = (idx) => setNewMainFiles(prev => prev.filter((_, i) => i !== idx));
-        const handleAddSize = (e) => processFiles(e.target.files, (b64s) => setNewSizeFiles(prev => [...prev, ...b64s]));
+        const handleAddSize = (e) => selectImages(e, images => setNewSizeFiles(prev => [...prev, ...images.map(image => image.base64)]));
         const handleDelSizeExist = (idx) => setExistingSizeImages(prev => prev.filter((_, i) => i !== idx));
         const handleDelSizeNew = (idx) => setNewSizeFiles(prev => prev.filter((_, i) => i !== idx));
         // ✅ ฟังก์ชันใหม่ 1: สำหรับรับค่าลิงก์รูปหลัก
@@ -3988,6 +4168,7 @@ transRefSnap.forEach(doc => {
         };
       
         const handleSubmit = () => {
+            if (imagePreparationRef.current || loading) return;
             const finalCohort = adminContext?.role === 'superadmin' ? selectedCohort : adminContext?.cohort;
             onSave({
                 ...form,
@@ -4002,7 +4183,7 @@ transRefSnap.forEach(doc => {
 
         return ReactDOM.createPortal(
             // 🌟 Wrapper: ชิดขวา (justify-end) และพื้นหลังจาง
-            <div className={`fixed inset-0 ${zIndex} flex justify-end bg-black/60 backdrop-blur-md animate-fade-in`} onClick={onClose}>
+            <div className={`fixed inset-0 ${zIndex} flex justify-end bg-black/60 backdrop-blur-md animate-fade-in`} onClick={() => { if (!loading && !imagePreparationRef.current) onClose(); }}>
                 
                 {/* 🌟 Container: สูงเต็มจอ (h-full) และสไลด์จากขวา (animate-slide-in-right) */}
                 <div 
@@ -4015,13 +4196,14 @@ transRefSnap.forEach(doc => {
                             <h3 className="font-extrabold text-xl text-gray-800 tracking-tight">{product?.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h3>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{product?.id ? `#${product.id}` : 'CREATE NEW'}</p>
                         </div>
-                        <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all shadow-sm">
+                        <button onClick={() => { if (!loading && !imagePreparationRef.current) onClose(); }} className="w-9 h-9 rounded-full bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-all shadow-sm">
                             <Icon name="x" weight="bold" size={18}/>
                         </button>
                     </div>
 
                     {/* Scrollable Content */}
                     <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+                        <ImageUploadHint busy={isPreparingImages} />
                         {/* Super Admin Cohort Selection */}
                         {adminContext?.role === 'superadmin' && (
                             <div className="mb-2">
@@ -4064,7 +4246,7 @@ transRefSnap.forEach(doc => {
                         <div className="border-t border-dashed border-gray-200"></div>
                         
                         {/* ✅ เพิ่ม onAddUrl ลงไป */}
-                        <ImageManager 
+                        <ImageManager disabled={loading || isPreparingImages} 
                             label="รูปภาพสินค้า" 
                             existingUrls={existingMainImages} 
                             newImages={newMainFiles} 
@@ -4073,7 +4255,7 @@ transRefSnap.forEach(doc => {
                             onAddNew={handleAddMain} 
                             onAddUrl={handleAddMainUrl} 
                         />
-                        <ImageManager 
+                        <ImageManager disabled={loading || isPreparingImages} 
                             label="ตารางไซส์" 
                             existingUrls={existingSizeImages} 
                             newImages={newSizeFiles} 
@@ -4129,7 +4311,7 @@ transRefSnap.forEach(doc => {
 
                     {/* Footer Actions */}
                     <div className="p-4 bg-white border-t border-gray-100 z-10 pb-safe">
-                        <button onClick={handleSubmit} disabled={loading} className="w-full py-4 rounded-2xl font-bold text-white shadow-lg shadow-indigo-200 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 transform active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <button onClick={handleSubmit} disabled={isPreparingImages || loading} className="w-full py-4 rounded-2xl font-bold text-white shadow-lg shadow-indigo-200 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 transform active:scale-95 transition-all flex items-center justify-center gap-2">
                             {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : <><Icon name="check-circle" weight="bold" size={20}/> บันทึกสินค้า</>}
                         </button>
                     </div>
@@ -4223,7 +4405,7 @@ transRefSnap.forEach(doc => {
                     {/* ประกาศจากระบบ */}
                     <div className="bg-white p-5 rounded-[2rem] card-shadow border border-gray-100 flex flex-col gap-2 relative overflow-hidden md:col-span-2">
                         <div className="flex justify-between items-center mb-1"><div className="flex items-center gap-2"><div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg"><Icon name="megaphone" weight="fill" size={16}/></div><h3 className="font-bold text-gray-800 text-sm">ประกาศจากระบบ (แบนเนอร์)</h3></div><button onClick={() => { setAnnounceForm({ type: isImageAnnounce ? 'image' : 'text', text: isImageAnnounce ? '' : rawAnnounce, fileBase64: '', preview: isImageAnnounce ? announceContent : '' }); setIsAnnounceModalOpen(true); }} className="text-gray-400 hover:text-blue-600 transition bg-gray-50 hover:bg-blue-50 p-1.5 rounded-lg"><Icon name="pencil-simple" weight="bold" size={14}/> แก้ไขประกาศ</button></div>
-                        {isImageAnnounce ? (<div className="w-full h-32 md:h-48 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}><img src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer"/></div>) : (<div className="bg-blue-50/50 p-4 rounded-xl border border-blue-50 min-h-[60px] flex items-center"><p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p></div>)}
+                        {isImageAnnounce ? (<div className="w-full h-32 md:h-48 bg-gray-100 rounded-xl overflow-hidden cursor-pointer hover:opacity-90 transition border border-gray-200" onClick={() => onViewImage(announceContent)}><AppImage src={announceContent} className="w-full h-full object-cover" alt="Announcement" referrerPolicy="no-referrer"/></div>) : (<div className="bg-blue-50/50 p-4 rounded-xl border border-blue-50 min-h-[60px] flex items-center"><p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{announceContent || "ไม่มีประกาศในขณะนี้..."}</p></div>)}
                     </div>
                 </div>
 
@@ -4262,7 +4444,7 @@ transRefSnap.forEach(doc => {
                                     </div>
                                     <div className="flex gap-4 items-center z-10 mt-2">
                                         <div className="w-16 h-16 bg-white p-1 rounded-xl">
-                                            <img src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/>
+                                            <AppImage src={getDirectImageUrl(qr.url)} className="w-full h-full object-contain mix-blend-multiply" referrerPolicy="no-referrer" alt="QR"/>
                                         </div>
                                         <div className="flex-1">
                                             {isGlobalMode ? (
@@ -5482,7 +5664,7 @@ transRefSnap.forEach(doc => {
                     isOpen={isModalOpen} 
                     onClose={()=>setIsModalOpen(false)} 
                     product={editingProduct} 
-                    onSave={(data) => { setIsModalOpen(false); onSaveProduct(data); }} 
+                    onSave={async (data) => { if (await onSaveProduct(data)) setIsModalOpen(false); }} 
                     loading={processingAction === 'SAVE_PRODUCT'} 
                     adminContext={adminContext} 
                     availableCohorts={availableCohorts} 
@@ -5726,6 +5908,7 @@ transRefSnap.forEach(doc => {
     // ==========================================
 
     const FinanceForm = ({ onSubmit, loading, initialData, students = [], defaultProject = '' }) => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
       const [form, setForm] = useState({
         id: '', date: new Date().toISOString().split('T')[0], project: defaultProject,
         item: '', type: 'รายรับ', amount: '', person: '',
@@ -5770,23 +5953,15 @@ transRefSnap.forEach(doc => {
 
       const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-      const handleFileChange = (e, type) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = reader.result.split(',')[1];
-            if (type === 'receipt') {
-              setForm(prev => ({ ...prev, receiptFile: base64, isReceiptDeleted: false }));
-              setReceiptPreview(reader.result);
-            } else {
-              setForm(prev => ({ ...prev, slipFile: base64, isSlipDeleted: false }));
-              setSlipPreview(reader.result);
-            }
-          };
-          reader.readAsDataURL(file);
+      const handleFileChange = (e, type) => selectImages(e, ([image]) => {
+        if (type === 'receipt') {
+          setForm(prev => ({ ...prev, receiptFile: image.base64, isReceiptDeleted: false }));
+          setReceiptPreview(image.preview);
+        } else {
+          setForm(prev => ({ ...prev, slipFile: image.base64, isSlipDeleted: false }));
+          setSlipPreview(image.preview);
         }
-      };
+      });
 
       // ✅ เพิ่มฟังก์ชันรับลิงก์ใบเสร็จ
       const handleReceiptUrl = () => {
@@ -5815,6 +5990,7 @@ transRefSnap.forEach(doc => {
       };
 
       const handleSubmit = () => {
+            if (imagePreparationRef.current || loading) return;
           // รวมชื่อผู้รับผิดชอบเป็น String ก่อนบันทึก
           onSubmit({ ...form, person: selectedPersons.join(', ') });
       };
@@ -5909,6 +6085,7 @@ transRefSnap.forEach(doc => {
             </div>
           </div>
 
+          <ImageUploadHint busy={isPreparingImages} />
           <div className="grid grid-cols-2 gap-3 pt-2">
             {/* ใบเสร็จ */}
             <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
@@ -5916,10 +6093,10 @@ transRefSnap.forEach(doc => {
               {receiptPreview ? (
                 <div className="relative group">
                   <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                    <img src={getDirectImageUrl(receiptPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
+                    <AppImage src={getDirectImageUrl(receiptPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                   </div>
                   <div className="absolute top-2 right-2 flex gap-2">
-                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" /></label>
+                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" /></label>
                     <button type="button" onClick={() => { setForm(p => ({...p, receiptUrl: '', receiptFile: null, isReceiptDeleted: true})); setReceiptPreview(null); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50 transition"><Icon name="trash" weight="bold" size={16}/></button>
                   </div>
                 </div>
@@ -5928,7 +6105,7 @@ transRefSnap.forEach(doc => {
                     <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                         <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
                         <p className="text-[10px] text-gray-500 font-medium">อัปโหลด</p>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" />
+                        <input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, 'receipt')} className="hidden" />
                     </label>
                     <button type="button" onClick={handleReceiptUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                         <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
@@ -5944,10 +6121,10 @@ transRefSnap.forEach(doc => {
               {slipPreview ? (
                 <div className="relative group">
                   <div className="h-32 w-full bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-                    <img src={getDirectImageUrl(slipPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
+                    <AppImage src={getDirectImageUrl(slipPreview)} className="w-full h-full object-contain bg-white" referrerPolicy="no-referrer" />
                   </div>
                   <div className="absolute top-2 right-2 flex gap-2">
-                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" /></label>
+                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition"><Icon name="arrows-clockwise" weight="bold" size={16}/><input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" /></label>
                     <button type="button" onClick={() => { setForm(p => ({...p, slipUrl: '', slipFile: null, isSlipDeleted: true})); setSlipPreview(null); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50 transition"><Icon name="trash" weight="bold" size={16}/></button>
                   </div>
                 </div>
@@ -5956,7 +6133,7 @@ transRefSnap.forEach(doc => {
                     <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                         <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
                         <p className="text-[10px] text-gray-500 font-medium">อัปโหลด</p>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" />
+                        <input type="file" disabled={isPreparingImages || loading} accept="image/jpeg,image/png,image/webp" onChange={(e) => handleFileChange(e, 'slip')} className="hidden" />
                     </label>
                     <button type="button" onClick={handleSlipUrl} className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer bg-white hover:bg-gray-50 hover:border-blue-300 transition group">
                         <Icon name="link" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
@@ -5967,7 +6144,7 @@ transRefSnap.forEach(doc => {
             </div>
           </div>
 
-          <button onClick={handleSubmit} disabled={loading || !form.project || !form.item || !form.amount} className="w-full py-4 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold hover:shadow-lg shadow-blue-200 disabled:opacity-50 transition transform active:scale-95 flex items-center justify-center gap-2">
+          <button onClick={handleSubmit} disabled={isPreparingImages || loading || !form.project || !form.item || !form.amount} className="w-full py-4 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold hover:shadow-lg shadow-blue-200 disabled:opacity-50 transition transform active:scale-95 flex items-center justify-center gap-2">
             {loading ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : <><Icon name="floppy-disk" weight="bold" size={20}/> {initialData ? "บันทึกการแก้ไข" : "บันทึกรายการ"}</>}
           </button>
         </div>
@@ -6252,6 +6429,7 @@ transRefSnap.forEach(doc => {
     
     // --- MAIN APP ---
     const App = () => {
+        const { selectImages, isPreparingImages, imagePreparationRef } = useImageSelection();
       const [activeTab, setActiveTab] = useState('dashboard');
       const [loading, setLoading] = useState(true);
       const [showSuccess, setShowSuccess] = useState(false);
@@ -6520,7 +6698,21 @@ transRefSnap.forEach(doc => {
         };
       const handleDeleteFinance = (id) => { setProcessingAction('DELETE'); apiCall('deleteFinanceLog', adminContext, id).then((newData) => { setData(newData); finishAction(); }).catch((err) => { alert('Error: ' + err.message); setProcessingAction(null); }); };
       const handleToggleOrderSystem = (status) => { setProcessingAction('TOGGLE_SYSTEM'); setOrderData(prev => ({ ...prev, systemStatus: status ? 'ON' : 'OFF' })); setTimeout(() => { apiCall('toggleOrderSystem', adminContext, status).then(() => finishAction()).catch(() => { setOrderData(prev => ({ ...prev, systemStatus: status ? 'OFF' : 'ON' })); alert("บันทึกไม่สำเร็จ"); }); }, 500); };
-      const handleSaveProduct = (form) => { setProcessingAction('SAVE_PRODUCT'); setOrderData(prev => { let newProducts = [...prev.products]; const existingIdx = newProducts.findIndex(p => p.id === form.id); if (existingIdx >= 0) { newProducts[existingIdx] = { ...newProducts[existingIdx], ...form }; } else { newProducts.push({ ...form, id: form.id || `temp-${Date.now()}` }); } return { ...prev, products: newProducts }; }); setTimeout(() => { apiCall('saveProduct', adminContext, form).then(() => finishAction()).catch((err) => alert('Error: ' + err.message)); }, 500); };
+      const handleSaveProduct = async (form) => {
+          if (processingAction === 'SAVE_PRODUCT') return false;
+          setProcessingAction('SAVE_PRODUCT');
+          try {
+              const savedData = await apiCall('saveProduct', adminContext, form);
+              setOrderData(savedData);
+              finishAction();
+              return true;
+          } catch (error) {
+              setErrorMessage(error.message || 'บันทึกสินค้าไม่สำเร็จ');
+              setIsErrorModalOpen(true);
+              setProcessingAction(null);
+              return false;
+          }
+      };
       const handleUpdateOrderStatus = (id, status) => { setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === id ? { ...o, status: status } : o) })); apiCall('updateOrderStatus', adminContext, id, status).then(() => fetchOrderData()).catch((err) => { alert('Error: ' + err.message); fetchOrderData(); }); };
       const handleEditOrder = (formData) => { setProcessingAction('EDIT_ORDER'); setOrderData(prev => ({ ...prev, orders: prev.orders.map(o => o.orderId === formData.orderId ? { ...o, ...formData } : o) })); setTimeout(() => { apiCall('editOrder', adminContext, formData).then(() => finishAction()).catch((err) => alert("Edit Failed: " + err.message)); }, 500); };
 
@@ -6594,7 +6786,7 @@ transRefSnap.forEach(doc => {
       };
 
       const handleEditBill = (formData) => { setProcessingAction('EDITING'); apiCall('editBill', adminContext, formData).then((newData) => { setData(newData); setSelectedBill(null); finishAction(); }).catch(err => { alert("Error: " + err.message); setProcessingAction(null); }); };
-      const handleSaveAnnouncement = () => { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', adminContext, announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); };
+      const handleSaveAnnouncement = () => { if (imagePreparationRef.current || processingAction) return; setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', adminContext, announceForm).then((resText) => { setData(prev => ({ ...prev, announcement: resText })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); setErrorMessage(err.message); setIsErrorModalOpen(true); }); };
       const handleDeleteAnnouncement = () => { if (window.confirm('คุณต้องการลบประกาศนี้ออกจากหน้าเว็บใช่หรือไม่?')) { setProcessingAction('ANNOUNCE'); apiCall('updateAnnouncementData', adminContext, { type: 'text', text: '' }).then((resText) => { setData(prev => ({ ...prev, announcement: '' })); setIsAnnounceModalOpen(false); finishAction(); }).catch((err) => { setProcessingAction(null); alert('Error: ' + err.message); }); } };
       
       const handleSaveStudent = (formData) => { 
@@ -7076,7 +7268,7 @@ transRefSnap.forEach(doc => {
               history={data.history?.filter(h => String(h.studentId) === String(viewingStudentId))} 
               orders={orderData.orders?.filter(o => String(o.studentId) === String(viewingStudentId))} 
           />
-          <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} />
+          <QrCodeModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} qrUrls={data.amount?.qrCodes || []} onUploadSuccess={handleQrUploadSuccess} onDelete={handleDeleteQrClick} loading={loading} initialEditQr={editingQrData} adminContext={adminContext} />
           <ErrorModal isOpen={isErrorModalOpen} onClose={() => setIsErrorModalOpen(false)} message={errorMessage} />
           <ImageModal isOpen={!!viewingSlipUrl} onClose={() => setViewingSlipUrl(null)} imageUrl={getDirectImageUrl(viewingSlipUrl)} />
           <HistoryEditModal isOpen={!!editingHistory} onClose={() => setEditingHistory(null)} historyItem={editingHistory} onSave={handleEditHistoryData} loading={processingAction === 'EDIT_HISTORY'} />
@@ -7102,22 +7294,16 @@ transRefSnap.forEach(doc => {
                   ) : (
                       <div className="space-y-2">
                           <label className="text-xs font-bold text-gray-500 mb-2 block">รูปภาพประกาศ (แบนเนอร์)</label>
+                          <ImageUploadHint busy={isPreparingImages} />
                           {announceForm.preview ? (
                               <div className="relative group">
                                   <div className="h-40 w-full bg-gray-100 rounded-xl overflow-hidden border border-gray-200 flex items-center justify-center">
-                                      <img src={announceForm.preview} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                                      <AppImage src={announceForm.preview} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
                                   </div>
                                   <div className="absolute top-2 right-2 flex gap-2">
                                       <label className="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-white text-blue-600 shadow-md hover:bg-blue-50 transition">
                                           <Icon name="arrows-clockwise" weight="bold" size={16}/>
-                                          <input type="file" accept="image/*" onChange={(e) => {
-                                              const file = e.target.files[0];
-                                              if (file) {
-                                                  const reader = new FileReader();
-                                                  reader.onloadend = () => setAnnounceForm({ ...announceForm, fileBase64: reader.result.split(',')[1], preview: reader.result });
-                                                  reader.readAsDataURL(file);
-                                              }
-                                          }} className="hidden" />
+                                          <input type="file" disabled={isPreparingImages || !!processingAction} accept="image/jpeg,image/png,image/webp" onChange={(e) => selectImages(e, ([image]) => setAnnounceForm(prev => ({ ...prev, fileBase64: image.base64, preview: image.preview })))} className="hidden" />
                                       </label>
                                   </div>
                               </div>
@@ -7127,14 +7313,7 @@ transRefSnap.forEach(doc => {
                                       <Icon name="cloud-arrow-up" className="text-gray-400 group-hover:text-blue-500 mb-1" size={24}/>
                                       <p className="text-[10px] text-gray-500 font-medium">กดเพื่ออัปโหลดรูปภาพแบนเนอร์</p>
                                   </div>
-                                  <input type="file" accept="image/*" onChange={(e) => {
-                                      const file = e.target.files[0];
-                                      if (file) {
-                                          const reader = new FileReader();
-                                          reader.onloadend = () => setAnnounceForm({ ...announceForm, fileBase64: reader.result.split(',')[1], preview: reader.result });
-                                          reader.readAsDataURL(file);
-                                      }
-                                  }} className="hidden" />
+                                  <input type="file" disabled={isPreparingImages || !!processingAction} accept="image/jpeg,image/png,image/webp" onChange={(e) => selectImages(e, ([image]) => setAnnounceForm(prev => ({ ...prev, fileBase64: image.base64, preview: image.preview })))} className="hidden" />
                               </label>
                           )}
                       </div>
@@ -7146,7 +7325,7 @@ transRefSnap.forEach(doc => {
                               <Icon name="trash" weight="bold" size={20}/>
                           </button>
                       )}
-                      <button onClick={handleSaveAnnouncement} disabled={!!processingAction || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
+                      <button onClick={handleSaveAnnouncement} disabled={isPreparingImages || !!processingAction || (announceForm.type === 'text' && !announceForm.text) || (announceForm.type === 'image' && !announceForm.preview)} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
                           {processingAction === 'ANNOUNCE' ? <><Icon name="spinner" className="animate-spin" weight="bold"/> กำลังบันทึก...</> : 'บันทึกประกาศ'}
                       </button>
                   </div>
